@@ -346,7 +346,17 @@
 <div id="grid"></div>
 
 <script>
-const API = "https://api.hive.blog";
+// Multiple public Hive API nodes, tried in order — if the primary node is down or
+// slow, the site keeps working instead of breaking outright. "Sticky": once a node
+// answers successfully it's tried first next time, so healthy calls don't keep
+// re-probing dead nodes. This list is a handful of well-known public nodes as of
+// building this — node uptime shifts over time, worth a periodic sanity check.
+const API_NODES = [
+  "https://api.hive.blog",
+  "https://api.openhive.network",
+  "https://anyx.io"
+];
+let currentNodeIndex = 0;
 
 // Most browsers block extensions (including Hive Keychain) from running on file:// pages.
 // Surface that clearly rather than letting it look like Keychain itself is broken.
@@ -424,10 +434,108 @@ function pinsPermlinkFor(username) {
 }
 let myPins = []; // pins for currentUser, kept in memory once logged in
 
+// ---- HiveSigner: a login alternative for people without the Keychain browser extension ----
+// SETUP REQUIRED before this works: register an app at https://hivesigner.com/apps/new using
+// a Hive account you control, replace HIVESIGNER_CLIENT_ID below with that account's name, and
+// add this site's exact URL as an allowed Redirect URI in that app's settings. Until that's
+// done, the "Log in with HiveSigner" button will fail — Keychain login is unaffected either way.
+const HIVESIGNER_CLIENT_ID = "artofkylin"; // your registered HiveSigner app/account name
+const HIVESIGNER_SCOPES = "vote,comment"; // covers voting + every on-chain edit this site makes
+
+function hivesignerRedirectUri() {
+  return location.origin + location.pathname;
+}
+function hivesignerAuthorizeUrl() {
+  const params = new URLSearchParams({
+    client_id: HIVESIGNER_CLIENT_ID,
+    redirect_uri: hivesignerRedirectUri(),
+    scope: HIVESIGNER_SCOPES
+  });
+  return "https://hivesigner.com/oauth2/authorize?" + params.toString();
+}
+
+// After HiveSigner redirects back, the access token arrives in the URL (query string or
+// hash, depending on flow). Pick it up once on load, store it, then scrub it out of the
+// visible URL so refreshing or sharing the link doesn't leak the token or redo the login.
+function handleHivesignerRedirect() {
+  const query = new URLSearchParams(location.search);
+  const hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+  const accessToken = query.get("access_token") || hash.get("access_token");
+  const username = query.get("username") || hash.get("username");
+  if (accessToken && username) {
+    currentUser = username;
+    authMethod = "hivesigner";
+    localStorage.setItem("hiveArtUser", username);
+    localStorage.setItem("hiveArtAuthMethod", "hivesigner");
+    localStorage.setItem("hiveArtHivesignerToken", accessToken);
+    const keepHash = location.hash.startsWith("#profile/") ? location.hash : "";
+    history.replaceState(null, "", location.origin + location.pathname + keepHash);
+  }
+}
+
+async function hivesignerBroadcast(operations) {
+  const token = localStorage.getItem("hiveArtHivesignerToken");
+  try {
+    const res = await fetch("https://hivesigner.com/api/broadcast", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": "Bearer " + token },
+      body: JSON.stringify({ operations })
+    });
+    const json = await res.json();
+    if (!res.ok || json.error) {
+      return { success: false, message: json.error_description || json.error || "HiveSigner broadcast failed." };
+    }
+    return { success: true };
+  } catch (e) {
+    return { success: false, message: e.message };
+  }
+}
+
+function keychainRequestPost(account, title, body, parentPermlink, parentAuthor, jsonMetadata, permlink) {
+  return new Promise(resolve => {
+    window.hive_keychain.requestPost(account, title, body, parentPermlink, parentAuthor, jsonMetadata, permlink, "", (response) => {
+      resolve({ success: !!(response && response.success), message: response && response.message });
+    });
+  });
+}
+
+function keychainRequestVote(account, permlink, author, weight) {
+  return new Promise(resolve => {
+    window.hive_keychain.requestVote(account, permlink, author, weight, (response) => {
+      resolve({ success: !!(response && response.success), message: response && response.message });
+    });
+  });
+}
+
+// Every action in this site (vote, add/suggest tag, suggest genre, pin) goes through one
+// of these two helpers instead of calling Keychain or HiveSigner directly — so the rest of
+// the code doesn't need to know or care which login method is active.
+async function broadcastComment({ author, permlink, title, body, parentAuthor, parentPermlink, jsonMetadata }) {
+  if (authMethod === "hivesigner") {
+    return hivesignerBroadcast([["comment", {
+      parent_author: parentAuthor || "",
+      parent_permlink: parentPermlink,
+      author, permlink, title, body,
+      json_metadata: jsonMetadata
+    }]]);
+  }
+  if (!window.hive_keychain) return { success: false, message: "Hive Keychain not detected." };
+  return keychainRequestPost(author, title, body, parentPermlink, parentAuthor || "", jsonMetadata, permlink);
+}
+
+async function broadcastVote({ voter, author, permlink, weight }) {
+  if (authMethod === "hivesigner") {
+    return hivesignerBroadcast([["vote", { voter, author, permlink, weight }]]);
+  }
+  if (!window.hive_keychain) return { success: false, message: "Hive Keychain not detected." };
+  return keychainRequestVote(voter, permlink, author, weight);
+}
+
 let allPosts = [];
 let activeGenres = new Set();   // empty = all
 let activeSources = new Set();  // empty = all
 let currentUser = localStorage.getItem("hiveArtUser") || null;
+let authMethod = localStorage.getItem("hiveArtAuthMethod") || null; // "keychain" | "hivesigner" | null
 let followedSet = new Set();
 
 // ---- Saved filter preferences (localStorage, per-browser) ----
@@ -446,14 +554,27 @@ function savePrefs() {
 const savedPrefs = loadPrefs();
 
 async function rpc(method, params) {
-  const res = await fetch(API, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 })
-  });
-  const json = await res.json();
-  if (json.error) throw new Error(json.error.message || "RPC error");
-  return json.result;
+  let lastError;
+  for (let i = 0; i < API_NODES.length; i++) {
+    const nodeIndex = (currentNodeIndex + i) % API_NODES.length;
+    const node = API_NODES[nodeIndex];
+    try {
+      const res = await fetch(node, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 })
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error.message || "RPC error");
+      currentNodeIndex = nodeIndex; // stick with whatever just worked
+      return json.result;
+    } catch (e) {
+      lastError = e;
+      console.warn(`Node ${node} failed for ${method}:`, e.message);
+    }
+  }
+  throw lastError || new Error("All API nodes failed");
 }
 
 async function resolveSeed(seed) {
@@ -519,31 +640,47 @@ function isPinned(author, permlink) {
   return myPins.some(p => p.author === author && p.permlink === permlink);
 }
 
-// ---- Auth (Hive Keychain — no passwords, no private keys touch this site) ----
+// ---- Auth (Hive Keychain or HiveSigner — no passwords, no private keys touch this site either way) ----
 function renderAuthControls() {
   const el = document.getElementById("authControls");
   if (currentUser) {
-    el.innerHTML = `<a href="#profile/${encodeURIComponent(currentUser)}" class="user-chip" style="text-decoration:none;">@${currentUser} · Profile</a><button class="chip" id="logoutBtn">Log out</button>`;
+    const methodLabel = authMethod === "hivesigner" ? "HiveSigner" : "Keychain";
+    el.innerHTML = `
+      <a href="#profile/${encodeURIComponent(currentUser)}" class="user-chip" style="text-decoration:none;">@${currentUser} · Profile</a>
+      <span class="sub">via ${methodLabel}</span>
+      <button class="chip" id="logoutBtn">Log out</button>
+    `;
     document.getElementById("logoutBtn").onclick = logout;
     document.getElementById("followingToggle").disabled = false;
     document.querySelector("#followingToggle + div .sub").textContent = "posts from people you follow";
     loadFollowing();
     loadMyPins();
   } else {
-    el.innerHTML = `<button class="chip" id="loginBtn">Log in with Keychain</button>`;
-    document.getElementById("loginBtn").onclick = login;
+    el.innerHTML = `
+      <button class="chip" id="loginKeychainBtn">Log in with Keychain</button>
+      <button class="chip" id="loginHivesignerBtn">Log in with HiveSigner</button>
+    `;
+    document.getElementById("loginKeychainBtn").onclick = loginWithKeychain;
+    document.getElementById("loginHivesignerBtn").onclick = loginWithHivesigner;
     document.getElementById("followingToggle").disabled = true;
     document.getElementById("followingToggle").checked = false;
     myPins = [];
   }
 }
 
+// Generic entry point used by action buttons (vote/pin/suggest) when nobody's logged in yet —
+// offers a choice rather than assuming Keychain.
 function login() {
+  const useKeychain = confirm("Log in to continue.\n\nOK = Log in with Keychain\nCancel = Log in with HiveSigner instead (no extension required)");
+  if (useKeychain) loginWithKeychain(); else loginWithHivesigner();
+}
+
+function loginWithKeychain() {
   if (!window.hive_keychain) {
     const fileHint = location.protocol === "file:"
       ? " You're viewing this over file:// — that's the most likely cause even if Keychain is installed (see the warning banner above)."
       : "";
-    alert("Hive Keychain extension not detected." + fileHint + " Install it from the Chrome/Firefox extension store to log in — no site of ours ever sees your private keys.");
+    alert("Hive Keychain extension not detected." + fileHint + " Install it, or use the \"Log in with HiveSigner\" button instead — no extension required.");
     return;
   }
   const username = prompt("Hive username:");
@@ -552,7 +689,9 @@ function login() {
   window.hive_keychain.requestSignBuffer(username, challenge, "Posting", (response) => {
     if (response && response.success) {
       currentUser = username;
+      authMethod = "keychain";
       localStorage.setItem("hiveArtUser", username);
+      localStorage.setItem("hiveArtAuthMethod", "keychain");
       renderAuthControls();
       route();
     } else {
@@ -561,11 +700,18 @@ function login() {
   });
 }
 
+function loginWithHivesigner() {
+  location.href = hivesignerAuthorizeUrl();
+}
+
 function logout() {
   currentUser = null;
+  authMethod = null;
   followedSet = new Set();
   myPins = [];
   localStorage.removeItem("hiveArtUser");
+  localStorage.removeItem("hiveArtAuthMethod");
+  localStorage.removeItem("hiveArtHivesignerToken");
   renderAuthControls();
   location.hash = ""; // profile pages only make sense while logged in as that context; back to the feed
   route();
@@ -582,17 +728,15 @@ async function loadFollowing() {
 }
 
 // ---- Voting — the highest-impact login feature: Hive votes are how creators get paid ----
-function vote(author, permlink, btn) {
+async function vote(author, permlink, btn) {
   if (!currentUser) { login(); return; }
-  if (!window.hive_keychain) { alert("Hive Keychain not detected."); return; }
-  window.hive_keychain.requestVote(currentUser, permlink, author, 10000, (response) => {
-    if (response && response.success) {
-      btn.textContent = "Voted ✓";
-      btn.disabled = true;
-    } else {
-      alert("Vote failed: " + (response && response.message));
-    }
-  });
+  const result = await broadcastVote({ voter: currentUser, author, permlink, weight: 10000 });
+  if (result.success) {
+    btn.textContent = "Voted ✓";
+    btn.disabled = true;
+  } else {
+    alert("Vote failed: " + result.message);
+  }
 }
 
 // ---- Let logged-in users add a tag to their OWN posts (any valid Hive tag, not a canned genre list) ----
@@ -609,36 +753,34 @@ function normalizeTag(raw) {
     .slice(0, 24);
 }
 
-function applyTagToOwnPost(author, permlink, newTag) {
+async function applyTagToOwnPost(author, permlink, newTag) {
   if (currentUser !== author) return;
-  if (!window.hive_keychain) { alert("Hive Keychain not detected."); return; }
   const post = allPosts.find(p => p.author === author && p.permlink === permlink);
   if (!post) return;
   if (post.rawTags.includes(newTag)) { alert("Already tagged with that genre."); return; }
   if (post.rawTags.length >= 10) { alert("This post already has the maximum of 10 tags — remove one on Hive directly first."); return; }
   const updatedTags = [...post.rawTags, newTag];
   const jsonMetadata = JSON.stringify({ ...post.rawMeta, tags: updatedTags });
-  window.hive_keychain.requestPost(
-    currentUser,
-    post.title,
-    post.body,
-    post.parentPermlink,
-    post.parentAuthor || "",
-    jsonMetadata,
-    post.permlink,
-    "",
-    (response) => {
-      if (response && response.success) {
-        post.rawTags = updatedTags;
-        const cls = classify(updatedTags);
-        post.genres = cls.genres; post.isAI = cls.isAI; post.isNSFW = cls.isNSFW;
-        buildFilterChips();
-        route();
-      } else {
-        alert("Failed to update tags: " + (response && response.message));
-      }
-    }
-  );
+
+  const result = await broadcastComment({
+    author: currentUser,
+    permlink: post.permlink,
+    title: post.title,
+    body: post.body,
+    parentAuthor: post.parentAuthor,
+    parentPermlink: post.parentPermlink,
+    jsonMetadata
+  });
+
+  if (result.success) {
+    post.rawTags = updatedTags;
+    const cls = classify(updatedTags);
+    post.genres = cls.genres; post.isAI = cls.isAI; post.isNSFW = cls.isNSFW;
+    buildFilterChips();
+    route();
+  } else {
+    alert("Failed to update tags: " + result.message);
+  }
 }
 
 function addTag(author, permlink) {
@@ -656,10 +798,9 @@ function acceptSuggestion(author, permlink, tag) {
 }
 
 // ---- Suggesting a tag on someone else's post ----
-function suggestTag(targetAuthor, targetPermlink) {
+async function suggestTag(targetAuthor, targetPermlink) {
   if (!currentUser) { login(); return; }
   if (currentUser === targetAuthor) return; // use "+ Add tag" for your own posts instead
-  if (!window.hive_keychain) { alert("Hive Keychain not detected."); return; }
 
   const input = document.getElementById("suggestselect-" + targetPermlink);
   const tag = normalizeTag(input.value);
@@ -681,19 +822,19 @@ function suggestTag(targetAuthor, targetPermlink) {
     suggestion: { targetAuthor, targetPermlink, tag }
   });
 
-  window.hive_keychain.requestPost(
-    currentUser, title, body, SUGGESTION_TAG, "", jsonMetadata, permlink, "",
-    (response) => {
-      if (response && response.success) {
-        if (!suggestionsByPost.has(key)) suggestionsByPost.set(key, []);
-        suggestionsByPost.get(key).push({ tag, by: currentUser, created: new Date().toISOString(), permlink });
-        input.value = "";
-        route();
-      } else {
-        alert("Failed to submit suggestion: " + (response && response.message));
-      }
-    }
-  );
+  const result = await broadcastComment({
+    author: currentUser, permlink, title, body,
+    parentAuthor: "", parentPermlink: SUGGESTION_TAG, jsonMetadata
+  });
+
+  if (result.success) {
+    if (!suggestionsByPost.has(key)) suggestionsByPost.set(key, []);
+    suggestionsByPost.get(key).push({ tag, by: currentUser, created: new Date().toISOString(), permlink });
+    input.value = "";
+    route();
+  } else {
+    alert("Failed to submit suggestion: " + result.message);
+  }
 }
 
 async function loadSuggestions() {
@@ -744,9 +885,8 @@ function renderGenreSuggestions() {
   `).join("");
 }
 
-function suggestGenre() {
+async function suggestGenre() {
   if (!currentUser) { login(); return; }
-  if (!window.hive_keychain) { alert("Hive Keychain not detected."); return; }
   const genre = prompt("Genre name to propose (e.g. Ceramics):");
   if (!genre) return;
   const exampleTags = prompt("Example Hive tags for this genre, comma-separated (e.g. ceramics, pottery):") || "";
@@ -761,17 +901,17 @@ function suggestGenre() {
     genreSuggestion: { genre, exampleTags }
   });
 
-  window.hive_keychain.requestPost(
-    currentUser, title, body, TAXONOMY_SUGGESTION_TAG, "", jsonMetadata, permlink, "",
-    (response) => {
-      if (response && response.success) {
-        genreSuggestions.push({ genre, exampleTags, by: currentUser, created: new Date().toISOString() });
-        renderGenreSuggestions();
-      } else {
-        alert("Failed to submit genre suggestion: " + (response && response.message));
-      }
-    }
-  );
+  const result = await broadcastComment({
+    author: currentUser, permlink, title, body,
+    parentAuthor: "", parentPermlink: TAXONOMY_SUGGESTION_TAG, jsonMetadata
+  });
+
+  if (result.success) {
+    genreSuggestions.push({ genre, exampleTags, by: currentUser, created: new Date().toISOString() });
+    renderGenreSuggestions();
+  } else {
+    alert("Failed to submit genre suggestion: " + result.message);
+  }
 }
 
 async function loadAll() {
@@ -936,24 +1076,25 @@ async function loadUserPins(username) {
 
 async function togglePin(author, permlink) {
   if (!currentUser) { login(); return; }
-  if (!window.hive_keychain) { alert("Hive Keychain not detected."); return; }
   const idx = myPins.findIndex(p => p.author === author && p.permlink === permlink);
   const updated = idx >= 0 ? myPins.filter((_, i) => i !== idx) : [...myPins, { author, permlink }];
   const title = `${currentUser}'s favorite art — Hive Art Discovery`;
   const body = `A running list of favorite art pinned via Hive Art Discovery. This post is managed automatically — edits happen through the site, not by hand.`;
   const jsonMetadata = JSON.stringify({ tags: [PINS_TAG], app: "hive-art-discovery/0.1", pins: updated });
 
-  window.hive_keychain.requestPost(
-    currentUser, title, body, PINS_TAG, "", jsonMetadata, pinsPermlinkFor(currentUser), "",
-    (response) => {
-      if (response && response.success) {
-        myPins = updated;
-        route();
-      } else {
-        alert("Failed to update pins: " + (response && response.message));
-      }
-    }
-  );
+  const result = await broadcastComment({
+    author: currentUser,
+    permlink: pinsPermlinkFor(currentUser),
+    title, body,
+    parentAuthor: "", parentPermlink: PINS_TAG, jsonMetadata
+  });
+
+  if (result.success) {
+    myPins = updated;
+    route();
+  } else {
+    alert("Failed to update pins: " + result.message);
+  }
 }
 
 async function loadMyPins() {
@@ -1035,6 +1176,7 @@ document.getElementById("refreshBtn").addEventListener("click", () => {
 
 document.getElementById("suggestGenreBtn").addEventListener("click", suggestGenre);
 
+handleHivesignerRedirect(); // pick up ?access_token=... if we just came back from HiveSigner
 renderAuthControls();
 loadAll().catch(e => {
   document.getElementById("status").textContent = "Failed to load: " + e.message;
