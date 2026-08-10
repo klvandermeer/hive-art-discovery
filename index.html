@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hive Art Discovery — Prototype</title>
+<style>
+  :root {
+    --bg: #14161a;
+    --panel: #1d2023;
+    --card: #23262b;
+    --border: #33373d;
+    --text: #e8e8ea;
+    --muted: #9a9ea5;
+    --accent: #e0552b;
+    --accent-soft: rgba(224, 85, 43, 0.15);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+  }
+  header {
+    padding: 20px 24px 8px;
+  }
+  header h1 {
+    margin: 0 0 4px;
+    font-size: 22px;
+  }
+  header p {
+    margin: 0;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  .filters {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px;
+    align-items: center;
+  }
+  .filter-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .filter-group label.group-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .chip {
+    padding: 5px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .chip.active {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--card);
+  }
+  .toggle-row.warn { border-color: #6b3a2c; }
+  .toggle-row input { transform: scale(1.15); cursor: pointer; }
+  .toggle-row span { font-size: 13px; }
+  .toggle-row .sub { color: var(--muted); font-size: 11px; }
+  .sub { color: var(--muted); font-size: 11px; }
+  button.refresh {
+    margin-left: auto;
+    background: var(--accent);
+    color: white;
+    border: none;
+    padding: 9px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  button.refresh:disabled { opacity: 0.5; cursor: default; }
+  #status {
+    padding: 8px 24px;
+    color: var(--muted);
+    font-size: 13px;
+  }
+  #grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 16px;
+    padding: 8px 24px 40px;
+  }
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    text-decoration: none;
+    color: inherit;
+  }
+  .card:hover { border-color: var(--accent); }
+  .thumb {
+    width: 100%;
+    aspect-ratio: 4/3;
+    object-fit: cover;
+    background: #2a2d32;
+  }
+  .card-body { padding: 10px 12px 12px; }
+  .card-title {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 6px;
+    line-height: 1.3;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .card-meta {
+    font-size: 12px;
+    color: var(--muted);
+    margin-bottom: 8px;
+  }
+  .badges { display: flex; flex-wrap: wrap; gap: 5px; }
+  .badge {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    background: #2f3338;
+    color: var(--muted);
+  }
+  .badge.ai { background: #4a2a10; color: #f0a35c; }
+  .badge.nsfw { background: #4a1010; color: #f06060; }
+  .empty {
+    padding: 60px 24px;
+    text-align: center;
+    color: var(--muted);
+  }
+  #protocolWarning {
+    display: none;
+    margin: 0 24px 12px;
+    padding: 10px 14px;
+    border: 1px solid #6b3a2c;
+    background: #2a1d16;
+    color: #f0a35c;
+    border-radius: 8px;
+    font-size: 13px;
+  }
+  #protocolWarning code {
+    background: rgba(255,255,255,0.08);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  .header-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .user-chip {
+    font-size: 12px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--muted);
+  }
+  #authControls {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .card-actions {
+    padding: 0 12px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .vote-btn {
+    padding: 6px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .vote-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .vote-btn:disabled { opacity: 0.5; cursor: default; }
+  .tag-add {
+    display: flex;
+    gap: 4px;
+  }
+  .tag-add input {
+    flex: 1;
+    font-size: 11px;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 6px;
+    min-width: 0;
+  }
+  .tag-add button {
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+  }
+  .suggestions {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .suggestion-chip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    padding: 4px 8px;
+    border-radius: 6px;
+    background: #22303a;
+    color: #7ec8e3;
+  }
+  .suggestion-chip .sub { color: var(--muted); font-size: 10px; }
+  .accept-btn {
+    margin-left: auto;
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid var(--accent);
+    background: transparent;
+    color: var(--accent);
+    cursor: pointer;
+  }
+  .reject-btn {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  #genreSuggestionsBar {
+    padding: 10px 24px;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  #genreSuggestionsList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  #profileHeader {
+    display: none;
+    padding: 20px 24px 8px;
+  }
+  #profileHeader h2 { margin: 0 0 4px; }
+  .profile-link {
+    font-size: 11px;
+    color: var(--muted);
+    text-decoration: none;
+  }
+  .profile-link:hover { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-row">
+    <div>
+      <h1>Hive Art Discovery — Prototype</h1>
+      <p>Live from Hive's public API · Sketchbook, Alien Art Hive, DrawADay, Photography Lovers + <code>art</code>/<code>traditionalart</code>/<code>digitalart</code>/<code>humanart</code> tags · fully automated tagging, no manual curation</p>
+    </div>
+    <div id="authControls"></div>
+  </div>
+</header>
+
+<div id="protocolWarning">
+  ⚠️ You're viewing this as a local file (<code id="protoText"></code>), which most browsers block extensions — including Hive Keychain — from running on. If login says Keychain isn't detected, either enable "Allow access to file URLs" for Keychain at <code>chrome://extensions</code>, or serve this folder locally (e.g. <code>python3 -m http.server 8000</code> from this folder, then open <code>http://localhost:8000/</code>) and reload.
+</div>
+
+<div class="filters">
+  <div class="filter-group">
+    <label class="group-label">Genre</label>
+    <div class="chips" id="genreChips"></div>
+  </div>
+  <div class="filter-group">
+    <label class="group-label">Source</label>
+    <div class="chips" id="sourceChips"></div>
+  </div>
+  <div class="toggle-row warn">
+    <input type="checkbox" id="nsfwToggle">
+    <div><span>Show NSFW</span><br><span class="sub">off by default</span></div>
+  </div>
+  <div class="toggle-row warn">
+    <input type="checkbox" id="aiToggle">
+    <div><span>Show AI art</span><br><span class="sub">off by default — tag-detected only</span></div>
+  </div>
+  <div class="toggle-row">
+    <input type="checkbox" id="followingToggle" disabled>
+    <div><span>Following only</span><br><span class="sub">log in to use</span></div>
+  </div>
+  <button class="refresh" id="refreshBtn">Refresh</button>
+</div>
+
+<div id="genreSuggestionsBar">
+  <button class="chip" id="suggestGenreBtn">💡 Suggest a new genre</button>
+  <span class="sub">Proposals for the site's genre list — reviewed by hand, not auto-added:</span>
+  <div id="genreSuggestionsList"></div>
+</div>
+
+<div id="status">Loading…</div>
+<div id="profileHeader"></div>
+<div id="grid"></div>
+
+<script>
+const API = "https://api.hive.blog";
+
+// Most browsers block extensions (including Hive Keychain) from running on file:// pages.
+// Surface that clearly rather than letting it look like Keychain itself is broken.
+if (location.protocol === "file:") {
+  document.getElementById("protoText").textContent = location.href;
+  document.getElementById("protocolWarning").style.display = "block";
+}
+
+// Seed sources decided in the project plan.
+// Each is resolved to a real Hive community if one exists; otherwise treated as a plain tag.
+const SEEDS = [
+  { label: "Sketchbook", query: "sketchbook" },
+  { label: "Alien Art Hive", query: "alien art hive" },
+  { label: "DrawADay", query: "drawaday" },
+  { label: "Photography Lovers", query: "photography lovers" },
+  { label: "#art tag", tag: "art" },              // always included as a plain tag, not resolved
+  { label: "#traditionalart tag", tag: "traditionalart" },
+  { label: "#digitalart tag", tag: "digitalart" },
+  { label: "#humanart tag", tag: "humanart" }
+];
+
+// Genre rule set — automated, tag-driven, no manual curation.
+// Note: generativeart is treated as AI-generated (see AI_TAGS below), not a genre —
+// pixel art (hand-made) and generative/algorithmic art are not the same thing.
+const GENRE_RULES = [
+  { genre: "Painting", tags: ["painting", "watercolor", "acrylic", "oilpainting", "gouache"] },
+  { genre: "Drawing & Sketch", tags: ["sketch", "sketchbook", "drawing", "doodle", "drawaday", "pencildrawing", "ink", "inktober"] },
+  { genre: "Digital Art", tags: ["digitalart", "digital-art", "procreate", "photoshopart"] },
+  { genre: "Illustration", tags: ["illustration", "conceptart", "characterdesign"] },
+  { genre: "Photography", tags: ["photography", "photo", "photofeed", "macrophotography", "naturephotography", "photographylovers"] },
+  { genre: "Sculpture & 3D", tags: ["sculpture", "3dart", "zbrush", "blender3d", "blender"] },
+  { genre: "Pixel Art", tags: ["pixelart", "glitchart"] },
+  { genre: "Mixed Media & Craft", tags: ["mixedmedia", "craft", "papercraft", "embroidery"] },
+  { genre: "NFT / Crypto Art", tags: ["nft", "nftshowroom", "cryptoart"] },
+  { genre: "Splinterlands", tags: ["splinterlands", "splinterlandsart", "splinterlandsartcontest"] },
+  { genre: "Holozing", tags: ["holozing", "holozingart"] }
+];
+
+const AI_TAGS = ["aiart", "ai-art", "midjourney", "stablediffusion", "stable-diffusion", "dalle", "dalle2", "dalle3", "dalle-3", "aigenerated", "ai-generated", "generativeart", "generative-art"];
+const NSFW_TAGS = ["nsfw"];
+
+// "Suggest a tag" — anyone logged in can propose a genre for a post they don't own.
+// Implemented the same way as everything else here: no backend, just a tagged Hive post.
+// Suggestions are broadcast as tiny top-level posts under the suggester's own account,
+// tagged SUGGESTION_TAG, carrying structured data in json_metadata.suggestion. The site
+// sweeps that tag like any other source and displays results as suggestions, never
+// auto-applying them — only the real author can actually change their post's tags
+// (via "Accept", which reuses the same on-chain edit as "+ Add tag").
+const SUGGESTION_TAG = "hiveartdiscovery-suggest-tag";
+let suggestionsByPost = new Map(); // "author/permlink" -> [{ tag, by, created, permlink }]
+
+// Rejecting a suggestion doesn't (and can't) delete the suggester's post — it just
+// stops showing that suggestion to this author, in this browser. Local-only for now,
+// same tradeoff as saved filter preferences.
+let rejectedSuggestions = new Set(JSON.parse(localStorage.getItem("hiveArtRejectedSuggestions") || "[]"));
+function rejectSuggestion(author, permlink, tag) {
+  rejectedSuggestions.add(author + "/" + permlink + "/" + tag);
+  localStorage.setItem("hiveArtRejectedSuggestions", JSON.stringify([...rejectedSuggestions]));
+  route();
+}
+
+// "Suggest a new genre" — a proposal for the site's genre list itself (not a tag on
+// one post). Same on-chain, no-backend pattern, but reviewed by hand rather than
+// applied automatically — the genre list lives in code (GENRE_RULES), so adding one
+// for real is a deliberate decision, not something any visitor can trigger.
+const TAXONOMY_SUGGESTION_TAG = "hiveartdiscovery-suggest-genre";
+let genreSuggestions = [];
+
+// ---- Profile pages: logged-in users pin favorite posts, visible on a profile view ----
+// One canonical post per user (deterministic permlink), edited in place every time their
+// pins change — same "Hive itself is the database" pattern as everything else here.
+const PINS_TAG = "hiveartdiscovery-pins";
+function pinsPermlinkFor(username) {
+  return PINS_TAG + "-" + username.replace(/\./g, "-");
+}
+let myPins = []; // pins for currentUser, kept in memory once logged in
+
+let allPosts = [];
+let activeGenres = new Set();   // empty = all
+let activeSources = new Set();  // empty = all
+let currentUser = localStorage.getItem("hiveArtUser") || null;
+let followedSet = new Set();
+
+// ---- Saved filter preferences (localStorage, per-browser) ----
+function loadPrefs() {
+  try { return JSON.parse(localStorage.getItem("hiveArtPrefs") || "{}"); } catch { return {}; }
+}
+function savePrefs() {
+  localStorage.setItem("hiveArtPrefs", JSON.stringify({
+    genres: [...activeGenres],
+    sources: [...activeSources],
+    nsfw: document.getElementById("nsfwToggle").checked,
+    ai: document.getElementById("aiToggle").checked,
+    followingOnly: document.getElementById("followingToggle").checked
+  }));
+}
+const savedPrefs = loadPrefs();
+
+async function rpc(method, params) {
+  const res = await fetch(API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 })
+  });
+  const json = await res.json();
+  if (json.error) throw new Error(json.error.message || "RPC error");
+  return json.result;
+}
+
+async function resolveSeed(seed) {
+  if (seed.tag) return { ...seed, tag: seed.tag };
+  try {
+    const results = await rpc("bridge.list_communities", { query: seed.query, limit: 5, sort: "rank" });
+    const match = (results || []).find(c =>
+      c.title.toLowerCase().includes(seed.query.toLowerCase().split(" ")[0])
+    ) || results?.[0];
+    if (match) return { ...seed, tag: match.name, resolved: match.title };
+  } catch (e) {
+    console.warn("Community lookup failed for", seed.label, e);
+  }
+  // Fallback: treat the seed name as a plain tag
+  return { ...seed, tag: seed.query.replace(/\s+/g, "") };
+}
+
+function parseMeta(post) {
+  try {
+    return typeof post.json_metadata === "string" ? JSON.parse(post.json_metadata) : (post.json_metadata || {});
+  } catch {
+    return {};
+  }
+}
+
+function firstImage(post, meta) {
+  if (meta.image && meta.image.length) return meta.image[0];
+  const match = (post.body || "").match(/https?:\/\/\S+\.(png|jpe?g|gif|webp)/i);
+  return match ? match[0] : null;
+}
+
+function classify(tags) {
+  const lower = tags.map(t => (t || "").toLowerCase());
+  const genres = GENRE_RULES.filter(r => r.tags.some(t => lower.includes(t))).map(r => r.genre);
+  const isAI = lower.some(t => AI_TAGS.includes(t));
+  const isNSFW = lower.some(t => NSFW_TAGS.includes(t));
+  return { genres: genres.length ? genres : ["Uncategorized"], isAI, isNSFW };
+}
+
+// Shared shape for every post the site knows about, whether it came from a feed sweep
+// or from resolving someone's pinned favorites on their profile.
+function buildPostRecord(post, source) {
+  const meta = parseMeta(post);
+  const tags = meta.tags || [post.category];
+  const { genres, isAI, isNSFW } = classify(tags);
+  return {
+    author: post.author,
+    permlink: post.permlink,
+    title: post.title,
+    source: source || "Pinned",
+    created: post.created,
+    image: firstImage(post, meta),
+    genres, isAI, isNSFW,
+    body: post.body,
+    parentAuthor: post.parent_author,
+    parentPermlink: post.parent_permlink,
+    rawTags: tags,
+    rawMeta: meta
+  };
+}
+
+function isPinned(author, permlink) {
+  return myPins.some(p => p.author === author && p.permlink === permlink);
+}
+
+// ---- Auth (Hive Keychain — no passwords, no private keys touch this site) ----
+function renderAuthControls() {
+  const el = document.getElementById("authControls");
+  if (currentUser) {
+    el.innerHTML = `<a href="#profile/${encodeURIComponent(currentUser)}" class="user-chip" style="text-decoration:none;">@${currentUser} · Profile</a><button class="chip" id="logoutBtn">Log out</button>`;
+    document.getElementById("logoutBtn").onclick = logout;
+    document.getElementById("followingToggle").disabled = false;
+    document.querySelector("#followingToggle + div .sub").textContent = "posts from people you follow";
+    loadFollowing();
+    loadMyPins();
+  } else {
+    el.innerHTML = `<button class="chip" id="loginBtn">Log in with Keychain</button>`;
+    document.getElementById("loginBtn").onclick = login;
+    document.getElementById("followingToggle").disabled = true;
+    document.getElementById("followingToggle").checked = false;
+    myPins = [];
+  }
+}
+
+function login() {
+  if (!window.hive_keychain) {
+    const fileHint = location.protocol === "file:"
+      ? " You're viewing this over file:// — that's the most likely cause even if Keychain is installed (see the warning banner above)."
+      : "";
+    alert("Hive Keychain extension not detected." + fileHint + " Install it from the Chrome/Firefox extension store to log in — no site of ours ever sees your private keys.");
+    return;
+  }
+  const username = prompt("Hive username:");
+  if (!username) return;
+  const challenge = "hive-art-discovery-login-" + Date.now();
+  window.hive_keychain.requestSignBuffer(username, challenge, "Posting", (response) => {
+    if (response && response.success) {
+      currentUser = username;
+      localStorage.setItem("hiveArtUser", username);
+      renderAuthControls();
+      route();
+    } else {
+      alert("Login failed: " + (response && response.message));
+    }
+  });
+}
+
+function logout() {
+  currentUser = null;
+  followedSet = new Set();
+  myPins = [];
+  localStorage.removeItem("hiveArtUser");
+  renderAuthControls();
+  location.hash = ""; // profile pages only make sense while logged in as that context; back to the feed
+  route();
+}
+
+async function loadFollowing() {
+  try {
+    const list = await rpc("condenser_api.get_following", [currentUser, "", "blog", 1000]);
+    followedSet = new Set((list || []).map(f => f.following));
+  } catch (e) {
+    console.warn("Failed to load following list", e);
+  }
+  route();
+}
+
+// ---- Voting — the highest-impact login feature: Hive votes are how creators get paid ----
+function vote(author, permlink, btn) {
+  if (!currentUser) { login(); return; }
+  if (!window.hive_keychain) { alert("Hive Keychain not detected."); return; }
+  window.hive_keychain.requestVote(currentUser, permlink, author, 10000, (response) => {
+    if (response && response.success) {
+      btn.textContent = "Voted ✓";
+      btn.disabled = true;
+    } else {
+      alert("Vote failed: " + (response && response.message));
+    }
+  });
+}
+
+// ---- Let logged-in users add a tag to their OWN posts (any valid Hive tag, not a canned genre list) ----
+// This is a real on-chain edit (a comment update via posting authority), not a site-local label —
+// it rewrites the post's json_metadata.tags, body/title/parent are resent unchanged.
+// Genres (GENRE_RULES) are how the site groups tags for browsing — what people can actually
+// add/suggest is a free-text Hive tag, since that's what the automated classifier reads anyway.
+function normalizeTag(raw) {
+  return (raw || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "-")
+    .replace(/[^a-z0-9-]/g, "")
+    .slice(0, 24);
+}
+
+function applyTagToOwnPost(author, permlink, newTag) {
+  if (currentUser !== author) return;
+  if (!window.hive_keychain) { alert("Hive Keychain not detected."); return; }
+  const post = allPosts.find(p => p.author === author && p.permlink === permlink);
+  if (!post) return;
+  if (post.rawTags.includes(newTag)) { alert("Already tagged with that genre."); return; }
+  if (post.rawTags.length >= 10) { alert("This post already has the maximum of 10 tags — remove one on Hive directly first."); return; }
+  const updatedTags = [...post.rawTags, newTag];
+  const jsonMetadata = JSON.stringify({ ...post.rawMeta, tags: updatedTags });
+  window.hive_keychain.requestPost(
+    currentUser,
+    post.title,
+    post.body,
+    post.parentPermlink,
+    post.parentAuthor || "",
+    jsonMetadata,
+    post.permlink,
+    "",
+    (response) => {
+      if (response && response.success) {
+        post.rawTags = updatedTags;
+        const cls = classify(updatedTags);
+        post.genres = cls.genres; post.isAI = cls.isAI; post.isNSFW = cls.isNSFW;
+        buildFilterChips();
+        route();
+      } else {
+        alert("Failed to update tags: " + (response && response.message));
+      }
+    }
+  );
+}
+
+function addTag(author, permlink) {
+  const input = document.getElementById("tagselect-" + permlink);
+  const tag = normalizeTag(input.value);
+  if (!tag) { alert("Enter a tag first."); return; }
+  applyTagToOwnPost(author, permlink, tag);
+  input.value = "";
+}
+
+// Accepting a suggestion is just applying it — the suggestion itself never touches
+// the real post, only the author's own "Accept" click does.
+function acceptSuggestion(author, permlink, tag) {
+  applyTagToOwnPost(author, permlink, tag);
+}
+
+// ---- Suggesting a tag on someone else's post ----
+function suggestTag(targetAuthor, targetPermlink) {
+  if (!currentUser) { login(); return; }
+  if (currentUser === targetAuthor) return; // use "+ Add tag" for your own posts instead
+  if (!window.hive_keychain) { alert("Hive Keychain not detected."); return; }
+
+  const input = document.getElementById("suggestselect-" + targetPermlink);
+  const tag = normalizeTag(input.value);
+  if (!tag) { alert("Enter a tag first."); return; }
+  const key = targetAuthor + "/" + targetPermlink;
+  const existing = suggestionsByPost.get(key) || [];
+  if (existing.some(s => s.tag === tag && s.by === currentUser)) {
+    alert("You already suggested that tag for this post.");
+    return;
+  }
+
+  const permlink = ("hiveartdiscovery-suggest-" + targetAuthor + "-" + tag + "-" + Date.now())
+    .toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 255);
+  const title = `Tag suggestion for @${targetAuthor}`;
+  const body = `Suggesting the **${tag}** genre tag for [this piece](https://peakd.com/@${targetAuthor}/${targetPermlink}) — via Hive Art Discovery.`;
+  const jsonMetadata = JSON.stringify({
+    tags: [SUGGESTION_TAG],
+    app: "hive-art-discovery/0.1",
+    suggestion: { targetAuthor, targetPermlink, tag }
+  });
+
+  window.hive_keychain.requestPost(
+    currentUser, title, body, SUGGESTION_TAG, "", jsonMetadata, permlink, "",
+    (response) => {
+      if (response && response.success) {
+        if (!suggestionsByPost.has(key)) suggestionsByPost.set(key, []);
+        suggestionsByPost.get(key).push({ tag, by: currentUser, created: new Date().toISOString(), permlink });
+        input.value = "";
+        route();
+      } else {
+        alert("Failed to submit suggestion: " + (response && response.message));
+      }
+    }
+  );
+}
+
+async function loadSuggestions() {
+  try {
+    const posts = await rpc("bridge.get_ranked_posts", { sort: "created", tag: SUGGESTION_TAG, observer: "" });
+    const fresh = new Map();
+    for (const p of posts) {
+      const meta = parseMeta(p);
+      const s = meta.suggestion;
+      if (!s || !s.targetAuthor || !s.targetPermlink || !s.tag) continue;
+      const key = s.targetAuthor + "/" + s.targetPermlink;
+      if (!fresh.has(key)) fresh.set(key, []);
+      fresh.get(key).push({ tag: s.tag, by: p.author, created: p.created, permlink: p.permlink });
+    }
+    suggestionsByPost = fresh;
+  } catch (e) {
+    console.warn("Failed to load suggestions", e);
+  }
+}
+
+// ---- Suggesting a new genre for the site's taxonomy (not tied to one post) ----
+async function loadGenreSuggestions() {
+  try {
+    const posts = await rpc("bridge.get_ranked_posts", { sort: "created", tag: TAXONOMY_SUGGESTION_TAG, observer: "" });
+    genreSuggestions = posts
+      .map(p => {
+        const meta = parseMeta(p);
+        return meta.genreSuggestion ? { ...meta.genreSuggestion, by: p.author, created: p.created } : null;
+      })
+      .filter(Boolean);
+  } catch (e) {
+    console.warn("Failed to load genre suggestions", e);
+    genreSuggestions = [];
+  }
+}
+
+function renderGenreSuggestions() {
+  const el = document.getElementById("genreSuggestionsList");
+  if (!genreSuggestions.length) {
+    el.innerHTML = `<span class="sub">None yet.</span>`;
+    return;
+  }
+  el.innerHTML = genreSuggestions.map(g => `
+    <span class="suggestion-chip">
+      💡 ${escapeHtml(g.genre)}${g.exampleTags ? ` <span class="sub">(${escapeHtml(g.exampleTags)})</span>` : ""}
+      <span class="sub">by @${g.by}</span>
+    </span>
+  `).join("");
+}
+
+function suggestGenre() {
+  if (!currentUser) { login(); return; }
+  if (!window.hive_keychain) { alert("Hive Keychain not detected."); return; }
+  const genre = prompt("Genre name to propose (e.g. Ceramics):");
+  if (!genre) return;
+  const exampleTags = prompt("Example Hive tags for this genre, comma-separated (e.g. ceramics, pottery):") || "";
+
+  const permlink = ("hiveartdiscovery-suggest-genre-" + genre + "-" + Date.now())
+    .toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 255);
+  const title = `Genre suggestion: ${genre}`;
+  const body = `Proposing a **${genre}** genre for Hive Art Discovery.${exampleTags ? ` Example tags: ${exampleTags}.` : ""}`;
+  const jsonMetadata = JSON.stringify({
+    tags: [TAXONOMY_SUGGESTION_TAG],
+    app: "hive-art-discovery/0.1",
+    genreSuggestion: { genre, exampleTags }
+  });
+
+  window.hive_keychain.requestPost(
+    currentUser, title, body, TAXONOMY_SUGGESTION_TAG, "", jsonMetadata, permlink, "",
+    (response) => {
+      if (response && response.success) {
+        genreSuggestions.push({ genre, exampleTags, by: currentUser, created: new Date().toISOString() });
+        renderGenreSuggestions();
+      } else {
+        alert("Failed to submit genre suggestion: " + (response && response.message));
+      }
+    }
+  );
+}
+
+async function loadAll() {
+  const status = document.getElementById("status");
+  status.textContent = "Resolving communities…";
+  const resolved = await Promise.all(SEEDS.map(resolveSeed));
+
+  status.textContent = "Fetching posts…";
+  const results = await Promise.all(resolved.map(async seed => {
+    try {
+      const posts = await rpc("bridge.get_ranked_posts", { sort: "created", tag: seed.tag, observer: "" });
+      return posts.map(p => ({ ...p, __source: seed.label }));
+    } catch (e) {
+      console.warn("Fetch failed for", seed.label, e);
+      return [];
+    }
+  }));
+
+  const seen = new Set();
+  allPosts = [];
+  for (const list of results) {
+    for (const post of list) {
+      const key = post.author + "/" + post.permlink;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      allPosts.push(buildPostRecord(post, post.__source));
+    }
+  }
+  allPosts.sort((a, b) => new Date(b.created) - new Date(a.created));
+
+  status.textContent = "Loading suggestions…";
+  await loadSuggestions();
+  await loadGenreSuggestions();
+  renderGenreSuggestions();
+
+  buildFilterChips();
+  route();
+  status.textContent = `${allPosts.length} posts loaded across ${SEEDS.length} sources.`;
+}
+
+function buildFilterChips() {
+  const genreEl = document.getElementById("genreChips");
+  const sourceEl = document.getElementById("sourceChips");
+  const genres = [...new Set(allPosts.flatMap(p => p.genres))].sort();
+  const sources = [...new Set(SEEDS.map(s => s.label))];
+
+  genreEl.innerHTML = genres.map(g =>
+    `<button class="chip" data-genre="${g}">${g}</button>`).join("");
+  sourceEl.innerHTML = sources.map(s =>
+    `<button class="chip" data-source="${s}">${s}</button>`).join("");
+
+  // Restore saved genre/source selections (once, on first build) from localStorage.
+  if (!buildFilterChips.restored && (savedPrefs.genres?.length || savedPrefs.sources?.length)) {
+    (savedPrefs.genres || []).forEach(g => activeGenres.add(g));
+    (savedPrefs.sources || []).forEach(s => activeSources.add(s));
+    buildFilterChips.restored = true;
+  }
+
+  genreEl.querySelectorAll(".chip").forEach(chip => {
+    if (activeGenres.has(chip.dataset.genre)) chip.classList.add("active");
+    chip.onclick = () => {
+      const g = chip.dataset.genre;
+      activeGenres.has(g) ? activeGenres.delete(g) : activeGenres.add(g);
+      chip.classList.toggle("active");
+      savePrefs();
+      render();
+    };
+  });
+  sourceEl.querySelectorAll(".chip").forEach(chip => {
+    if (activeSources.has(chip.dataset.source)) chip.classList.add("active");
+    chip.onclick = () => {
+      const s = chip.dataset.source;
+      activeSources.has(s) ? activeSources.delete(s) : activeSources.add(s);
+      chip.classList.toggle("active");
+      savePrefs();
+      render();
+    };
+  });
+}
+
+// Shared card markup — used by both the main feed grid and a profile's pinned grid.
+function cardTemplate(p) {
+  const suggestions = (suggestionsByPost.get(p.author + "/" + p.permlink) || [])
+    .filter(s => !rejectedSuggestions.has(p.author + "/" + p.permlink + "/" + s.tag));
+  return `
+    <div class="card">
+      <a href="https://peakd.com/@${p.author}/${p.permlink}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;">
+        ${p.image ? `<img class="thumb" src="${p.image}" loading="lazy" onerror="this.style.display='none'">` : `<div class="thumb"></div>`}
+        <div class="card-body">
+          <p class="card-title">${escapeHtml(p.title)}</p>
+          <div class="card-meta">@${p.author} · ${p.source}</div>
+          <div class="badges">
+            ${p.genres.map(g => `<span class="badge">${g}</span>`).join("")}
+            ${p.isAI ? `<span class="badge ai">AI art</span>` : ""}
+            ${p.isNSFW ? `<span class="badge nsfw">NSFW</span>` : ""}
+          </div>
+        </div>
+      </a>
+      <div class="card-actions">
+        <a href="#profile/${encodeURIComponent(p.author)}" class="profile-link">👤 @${p.author}'s profile</a>
+        <button class="vote-btn" onclick="vote('${p.author}','${p.permlink}', this)">▲ Upvote</button>
+        ${currentUser ? `<button class="vote-btn" onclick="togglePin('${p.author}','${p.permlink}')">${isPinned(p.author, p.permlink) ? "📌 Pinned — click to unpin" : "📌 Pin to profile"}</button>` : ""}
+        ${suggestions.length ? `
+          <div class="suggestions">
+            ${suggestions.map(s => `
+              <span class="suggestion-chip">
+                💡 ${s.tag} <span class="sub">by @${s.by}</span>
+                ${currentUser === p.author ? `
+                  <button class="accept-btn" onclick="acceptSuggestion('${p.author}','${p.permlink}','${s.tag}')">Accept</button>
+                  <button class="reject-btn" onclick="rejectSuggestion('${p.author}','${p.permlink}','${s.tag}')">Reject</button>
+                ` : ""}
+              </span>
+            `).join("")}
+          </div>
+        ` : ""}
+        ${currentUser === p.author ? `
+          <div class="tag-add">
+            <input type="text" id="tagselect-${p.permlink}" placeholder="tag to add, e.g. watercolor" maxlength="24">
+            <button onclick="addTag('${p.author}','${p.permlink}')">+ Add tag</button>
+          </div>
+        ` : currentUser ? `
+          <div class="tag-add">
+            <input type="text" id="suggestselect-${p.permlink}" placeholder="tag to suggest, e.g. watercolor" maxlength="24">
+            <button onclick="suggestTag('${p.author}','${p.permlink}')">💡 Suggest tag</button>
+          </div>
+        ` : ""}
+      </div>
+    </div>
+  `;
+}
+
+function render() {
+  const grid = document.getElementById("grid");
+  const showNSFW = document.getElementById("nsfwToggle").checked;
+  const showAI = document.getElementById("aiToggle").checked;
+  const followingOnly = document.getElementById("followingToggle").checked;
+
+  const filtered = allPosts.filter(p => {
+    if (p.isNSFW && !showNSFW) return false;
+    if (p.isAI && !showAI) return false;
+    if (activeGenres.size && !p.genres.some(g => activeGenres.has(g))) return false;
+    if (activeSources.size && !activeSources.has(p.source)) return false;
+    if (followingOnly && currentUser && !followedSet.has(p.author)) return false;
+    return true;
+  });
+
+  grid.innerHTML = filtered.length
+    ? filtered.map(cardTemplate).join("")
+    : `<div class="empty">No posts match the current filters.</div>`;
+}
+
+// ---- Profile view: a Hive user's pinned favorites, reached via #profile/<username> ----
+async function loadUserPins(username) {
+  try {
+    const post = await rpc("bridge.get_post", { author: username, permlink: pinsPermlinkFor(username), observer: "" });
+    const meta = post ? parseMeta(post) : {};
+    return Array.isArray(meta.pins) ? meta.pins : [];
+  } catch (e) {
+    return []; // no pins post yet for this user
+  }
+}
+
+async function togglePin(author, permlink) {
+  if (!currentUser) { login(); return; }
+  if (!window.hive_keychain) { alert("Hive Keychain not detected."); return; }
+  const idx = myPins.findIndex(p => p.author === author && p.permlink === permlink);
+  const updated = idx >= 0 ? myPins.filter((_, i) => i !== idx) : [...myPins, { author, permlink }];
+  const title = `${currentUser}'s favorite art — Hive Art Discovery`;
+  const body = `A running list of favorite art pinned via Hive Art Discovery. This post is managed automatically — edits happen through the site, not by hand.`;
+  const jsonMetadata = JSON.stringify({ tags: [PINS_TAG], app: "hive-art-discovery/0.1", pins: updated });
+
+  window.hive_keychain.requestPost(
+    currentUser, title, body, PINS_TAG, "", jsonMetadata, pinsPermlinkFor(currentUser), "",
+    (response) => {
+      if (response && response.success) {
+        myPins = updated;
+        route();
+      } else {
+        alert("Failed to update pins: " + (response && response.message));
+      }
+    }
+  );
+}
+
+async function loadMyPins() {
+  myPins = await loadUserPins(currentUser);
+  route();
+}
+
+async function renderProfileView(username) {
+  document.querySelector(".filters").style.display = "none";
+  document.getElementById("genreSuggestionsBar").style.display = "none";
+  const status = document.getElementById("status");
+  const profileHeader = document.getElementById("profileHeader");
+  const grid = document.getElementById("grid");
+  profileHeader.style.display = "block";
+  status.textContent = `Loading @${username}'s profile…`;
+
+  const pins = username === currentUser ? myPins : await loadUserPins(username);
+  if (username === currentUser) myPins = pins;
+
+  const resolved = (await Promise.all(pins.map(async pin => {
+    try {
+      const post = await rpc("bridge.get_post", { author: pin.author, permlink: pin.permlink, observer: "" });
+      return post ? buildPostRecord(post, "Pinned") : null;
+    } catch {
+      return null;
+    }
+  }))).filter(Boolean);
+
+  // Register resolved pins in the shared post cache so vote/tag-add/suggest all keep working here too.
+  resolved.forEach(rec => {
+    const i = allPosts.findIndex(x => x.author === rec.author && x.permlink === rec.permlink);
+    if (i >= 0) allPosts[i] = { ...allPosts[i], ...rec }; else allPosts.push(rec);
+  });
+
+  profileHeader.innerHTML = `
+    <h2>@${username}</h2>
+    <p class="sub">${resolved.length} pinned favorite${resolved.length === 1 ? "" : "s"}</p>
+    <button class="chip" onclick="location.hash=''">← Back to feed</button>
+  `;
+
+  grid.innerHTML = resolved.length
+    ? resolved.map(cardTemplate).join("")
+    : `<div class="empty">No pins yet.</div>`;
+
+  status.textContent = "";
+}
+
+function route() {
+  const hash = location.hash;
+  if (hash.startsWith("#profile/")) {
+    renderProfileView(decodeURIComponent(hash.slice("#profile/".length)));
+  } else {
+    document.getElementById("profileHeader").style.display = "none";
+    document.querySelector(".filters").style.display = "";
+    document.getElementById("genreSuggestionsBar").style.display = "";
+    render();
+  }
+}
+window.addEventListener("hashchange", route);
+
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str || "";
+  return div.innerHTML;
+}
+
+// Restore saved toggle state before first render.
+document.getElementById("nsfwToggle").checked = !!savedPrefs.nsfw;
+document.getElementById("aiToggle").checked = !!savedPrefs.ai;
+document.getElementById("followingToggle").checked = !!savedPrefs.followingOnly;
+
+document.getElementById("nsfwToggle").addEventListener("change", () => { savePrefs(); render(); });
+document.getElementById("aiToggle").addEventListener("change", () => { savePrefs(); render(); });
+document.getElementById("followingToggle").addEventListener("change", () => { savePrefs(); render(); });
+document.getElementById("refreshBtn").addEventListener("click", () => {
+  document.getElementById("refreshBtn").disabled = true;
+  loadAll().finally(() => { document.getElementById("refreshBtn").disabled = false; });
+});
+
+document.getElementById("suggestGenreBtn").addEventListener("click", suggestGenre);
+
+renderAuthControls();
+loadAll().catch(e => {
+  document.getElementById("status").textContent = "Failed to load: " + e.message;
+  console.error(e);
+});
+</script>
+
+</body>
+</html>
