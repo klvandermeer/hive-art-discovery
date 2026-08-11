@@ -293,6 +293,38 @@
     text-decoration: none;
   }
   .profile-link:hover { color: var(--accent); }
+  #wipHeader {
+    display: none;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  #wipHeader h2 { margin: 0 0 4px; }
+  #wipForm {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-width: 520px;
+  }
+  #wipForm textarea, #wipForm input[type="text"] {
+    background: var(--card);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+  }
+  #wipForm textarea { min-height: 70px; resize: vertical; }
+  .wip-crosspost {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 14px;
+    align-items: center;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .wip-crosspost label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
 </style>
 </head>
 <body>
@@ -303,7 +335,10 @@
       <h1>Hive Art Discovery — Prototype</h1>
       <p>Live from Hive's public API · Sketchbook, Alien Art Hive, DrawADay, Photography Lovers + <code>art</code>/<code>traditionalart</code>/<code>digitalart</code>/<code>humanart</code> tags · fully automated tagging, no manual curation</p>
     </div>
-    <div id="authControls"></div>
+    <div style="display:flex; align-items:center; gap:10px;">
+      <a href="#wip" class="user-chip" style="text-decoration:none;">🚧 WIP Feed</a>
+      <div id="authControls"></div>
+    </div>
   </div>
 </header>
 
@@ -343,6 +378,7 @@
 
 <div id="status">Loading…</div>
 <div id="profileHeader"></div>
+<div id="wipHeader"></div>
 <div id="grid"></div>
 
 <script>
@@ -529,6 +565,29 @@ async function broadcastVote({ voter, author, permlink, weight }) {
   }
   if (!window.hive_keychain) return { success: false, message: "Hive Keychain not detected." };
   return keychainRequestVote(voter, permlink, author, weight);
+}
+
+// ---- WIP feed: quick work-in-progress posts, auto-tagged "wip", separate from the
+// finished-art feed, optionally cross-posted to Hive Snaps and/or Ecency Waves ----
+// Snaps/Waves are both just Hive comments replying to a rolling "container" post from a
+// fixed account (@peak.snaps / @ecency.waves) — confirmed for Snaps via a real container
+// post format (snap-container-<timestamp>) in the hive-124838 community; Waves is the
+// same general pattern, slightly less certain on exact details but low-risk to try (worst
+// case it's just a normal comment that doesn't show up in Ecency's special Waves view).
+// InLeo Threads are deliberately NOT auto-posted — they use a proprietary custom_json
+// format this site doesn't have solid enough documentation to build against safely.
+const WIP_TAG = "wip";
+const SNAPS_ACCOUNT = "peak.snaps";
+const WAVES_ACCOUNT = "ecency.waves";
+
+async function getLatestContainerPost(account) {
+  try {
+    const posts = await rpc("bridge.get_account_posts", { sort: "posts", account, limit: 1, observer: "" });
+    return posts && posts[0] ? { author: posts[0].author, permlink: posts[0].permlink } : null;
+  } catch (e) {
+    console.warn("Failed to find latest container post for", account, e);
+    return null;
+  }
 }
 
 let allPosts = [];
@@ -1142,12 +1201,131 @@ async function renderProfileView(username) {
   status.textContent = "";
 }
 
+// ---- WIP feed view ----
+async function postWip() {
+  if (!currentUser) { login(); return; }
+  const body = document.getElementById("wipBody").value.trim();
+  if (!body) { alert("Write something first."); return; }
+  const imageUrl = document.getElementById("wipImage").value.trim();
+  const shareSnap = document.getElementById("wipSnap").checked;
+  const shareWave = document.getElementById("wipWave").checked;
+
+  const fullBody = imageUrl ? `${body}\n\n![wip](${imageUrl})` : body;
+  const permlink = ("wip-" + Date.now()).toLowerCase();
+  const title = `WIP: ${body.slice(0, 60)}${body.length > 60 ? "…" : ""}`;
+  const jsonMetadata = JSON.stringify({
+    tags: [WIP_TAG],
+    app: "hive-art-discovery/0.1",
+    ...(imageUrl ? { image: [imageUrl] } : {})
+  });
+
+  const result = await broadcastComment({
+    author: currentUser, permlink, title, body: fullBody,
+    parentAuthor: "", parentPermlink: WIP_TAG, jsonMetadata
+  });
+
+  if (!result.success) {
+    alert("Failed to post WIP update: " + result.message);
+    return;
+  }
+
+  const crosspostNote = `${fullBody}\n\n(WIP shared via Hive Art Discovery)`;
+
+  if (shareSnap) {
+    const container = await getLatestContainerPost(SNAPS_ACCOUNT);
+    if (container) {
+      const snapResult = await broadcastComment({
+        author: currentUser,
+        permlink: ("wip-snap-" + Date.now()).toLowerCase(),
+        title: "",
+        body: crosspostNote,
+        parentAuthor: container.author,
+        parentPermlink: container.permlink,
+        jsonMetadata: JSON.stringify({ tags: [SNAPS_ACCOUNT], app: "hive-art-discovery/0.1" })
+      });
+      if (!snapResult.success) alert("WIP posted, but cross-posting as a Snap failed: " + snapResult.message);
+    } else {
+      alert("WIP posted, but couldn't find the current Snaps container to cross-post into.");
+    }
+  }
+
+  if (shareWave) {
+    const container = await getLatestContainerPost(WAVES_ACCOUNT);
+    if (container) {
+      const waveResult = await broadcastComment({
+        author: currentUser,
+        permlink: ("wip-wave-" + Date.now()).toLowerCase(),
+        title: "",
+        body: crosspostNote,
+        parentAuthor: container.author,
+        parentPermlink: container.permlink,
+        jsonMetadata: JSON.stringify({ tags: [WAVES_ACCOUNT], app: "hive-art-discovery/0.1" })
+      });
+      if (!waveResult.success) alert("WIP posted, but cross-posting as a Wave failed: " + waveResult.message);
+    } else {
+      alert("WIP posted, but couldn't find the current Waves container to cross-post into.");
+    }
+  }
+
+  document.getElementById("wipBody").value = "";
+  document.getElementById("wipImage").value = "";
+  renderWipView();
+}
+
+async function renderWipView() {
+  document.querySelector(".filters").style.display = "none";
+  document.getElementById("genreSuggestionsBar").style.display = "none";
+  document.getElementById("profileHeader").style.display = "none";
+  const status = document.getElementById("status");
+  const wipHeader = document.getElementById("wipHeader");
+  const grid = document.getElementById("grid");
+  wipHeader.style.display = "block";
+  status.textContent = "Loading WIP feed…";
+
+  wipHeader.innerHTML = `
+    <h2>🚧 WIP Feed</h2>
+    <p class="sub">Quick work-in-progress updates, auto-tagged "${WIP_TAG}" — separate from the finished-art feed.</p>
+    <button class="chip" onclick="location.hash=''">← Back to feed</button>
+    ${currentUser ? `
+      <div id="wipForm">
+        <textarea id="wipBody" placeholder="What are you working on?"></textarea>
+        <input type="text" id="wipImage" placeholder="Image URL (optional)">
+        <div class="wip-crosspost">
+          <label><input type="checkbox" id="wipSnap"> Also share as a Hive Snap</label>
+          <label><input type="checkbox" id="wipWave"> Also share as an Ecency Wave</label>
+          <a href="https://inleo.io" target="_blank" rel="noopener" class="profile-link">Share on InLeo manually →</a>
+        </div>
+        <button class="chip" onclick="postWip()">Post WIP update</button>
+      </div>
+    ` : `<p class="sub">Log in to post a WIP update.</p>`}
+  `;
+
+  try {
+    const posts = await rpc("bridge.get_ranked_posts", { sort: "created", tag: WIP_TAG, observer: "" });
+    const records = posts.map(p => buildPostRecord(p, "WIP"));
+    records.forEach(rec => {
+      const i = allPosts.findIndex(x => x.author === rec.author && x.permlink === rec.permlink);
+      if (i >= 0) allPosts[i] = { ...allPosts[i], ...rec }; else allPosts.push(rec);
+    });
+    grid.innerHTML = records.length ? records.map(cardTemplate).join("") : `<div class="empty">No WIP posts yet — be the first.</div>`;
+  } catch (e) {
+    grid.innerHTML = `<div class="empty">Couldn't load the WIP feed.</div>`;
+    console.warn("Failed to load WIP feed", e);
+  }
+
+  status.textContent = "";
+}
+
 function route() {
   const hash = location.hash;
   if (hash.startsWith("#profile/")) {
+    document.getElementById("wipHeader").style.display = "none";
     renderProfileView(decodeURIComponent(hash.slice("#profile/".length)));
+  } else if (hash === "#wip") {
+    renderWipView();
   } else {
     document.getElementById("profileHeader").style.display = "none";
+    document.getElementById("wipHeader").style.display = "none";
     document.querySelector(".filters").style.display = "";
     document.getElementById("genreSuggestionsBar").style.display = "";
     render();
