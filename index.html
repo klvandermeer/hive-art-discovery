@@ -282,6 +282,48 @@
     flex-wrap: wrap;
     gap: 6px;
   }
+  #statsPanel {
+    padding: 12px 24px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+  }
+  #statsPanel table { border-collapse: collapse; font-size: 12px; width: 100%; max-width: 480px; }
+  #statsPanel td { padding: 3px 10px 3px 0; }
+  #statsPanel td.count { text-align: right; color: var(--muted); }
+  #statsPanel tr.zero td.count { color: #f06060; font-weight: 600; }
+  #statsPanel p.sub { margin: 0 0 8px; }
+  .history-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin: 14px 0 10px;
+  }
+  .history-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 10px;
+  }
+  .history-tags label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+  .chart-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 6px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .chart-legend .swatch {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 2px;
+    margin-right: 4px;
+    vertical-align: middle;
+  }
   #profileHeader {
     display: none;
     padding: 20px 24px 8px;
@@ -325,6 +367,29 @@
     color: var(--muted);
   }
   .wip-crosspost label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  .ai-review {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .review-chip {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: #3a2a10;
+    color: #e0b25c;
+  }
+  .flag-btn {
+    font-size: 11px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+  }
+  .flag-btn:hover { border-color: #e0b25c; color: #e0b25c; }
 </style>
 </head>
 <body>
@@ -367,8 +432,11 @@
     <input type="checkbox" id="followingToggle" disabled>
     <div><span>Following only</span><br><span class="sub">log in to use</span></div>
   </div>
+  <button class="chip" id="statsBtn">📊 Tag stats</button>
   <button class="refresh" id="refreshBtn">Refresh</button>
 </div>
+
+<div id="statsPanel" style="display:none;"></div>
 
 <div id="genreSuggestionsBar">
   <button class="chip" id="suggestGenreBtn">💡 Suggest a new genre</button>
@@ -411,7 +479,21 @@ const SEEDS = [
   { label: "#art tag", tag: "art" },              // always included as a plain tag, not resolved
   { label: "#traditionalart tag", tag: "traditionalart" },
   { label: "#digitalart tag", tag: "digitalart" },
-  { label: "#humanart tag", tag: "humanart" }
+  { label: "#humanart tag", tag: "humanart" },
+  { label: "#drawing tag", tag: "drawing" },
+  { label: "#painting tag", tag: "painting" },
+  { label: "#pencil tag", tag: "pencil" },
+  { label: "#sketch tag", tag: "sketch" },
+  { label: "#doodle tag", tag: "doodle" },
+  { label: "#portrait tag", tag: "portrait" },
+  { label: "#photography tag", tag: "photography" },
+  { label: "#naturephotography tag", tag: "naturephotography" },
+  { label: "#macrophotography tag", tag: "macrophotography" },
+  { label: "#microphotography tag", tag: "microphotography" },
+  { label: "#knitting tag", tag: "knitting" },
+  { label: "#embroidery tag", tag: "embroidery" },
+  { label: "#animation tag", tag: "animation" },
+  { label: "#crochet tag", tag: "crochet" }
 ];
 
 // Genre rule set — automated, tag-driven, no manual curation.
@@ -419,13 +501,14 @@ const SEEDS = [
 // pixel art (hand-made) and generative/algorithmic art are not the same thing.
 const GENRE_RULES = [
   { genre: "Painting", tags: ["painting", "watercolor", "acrylic", "oilpainting", "gouache"] },
-  { genre: "Drawing & Sketch", tags: ["sketch", "sketchbook", "drawing", "doodle", "drawaday", "pencildrawing", "ink", "inktober"] },
+  { genre: "Drawing & Sketch", tags: ["sketch", "sketchbook", "drawing", "doodle", "drawaday", "pencildrawing", "pencil", "ink", "inktober"] },
   { genre: "Digital Art", tags: ["digitalart", "digital-art", "procreate", "photoshopart"] },
   { genre: "Illustration", tags: ["illustration", "conceptart", "characterdesign"] },
-  { genre: "Photography", tags: ["photography", "photo", "photofeed", "macrophotography", "naturephotography", "photographylovers"] },
+  { genre: "Photography", tags: ["photography", "photo", "photofeed", "macrophotography", "naturephotography", "microphotography", "photographylovers"] },
   { genre: "Sculpture & 3D", tags: ["sculpture", "3dart", "zbrush", "blender3d", "blender"] },
   { genre: "Pixel Art", tags: ["pixelart", "glitchart"] },
-  { genre: "Mixed Media & Craft", tags: ["mixedmedia", "craft", "papercraft", "embroidery"] },
+  { genre: "Mixed Media & Craft", tags: ["mixedmedia", "craft", "papercraft", "embroidery", "knitting", "crochet"] },
+  { genre: "Animation", tags: ["animation", "animated", "motiongraphics"] },
   { genre: "NFT / Crypto Art", tags: ["nft", "nftshowroom", "cryptoart"] },
   { genre: "Splinterlands", tags: ["splinterlands", "splinterlandsart", "splinterlandsartcontest"] },
   { genre: "Holozing", tags: ["holozing", "holozingart"] }
@@ -433,6 +516,35 @@ const GENRE_RULES = [
 
 const AI_TAGS = ["aiart", "ai-art", "midjourney", "stablediffusion", "stable-diffusion", "dalle", "dalle2", "dalle3", "dalle-3", "aigenerated", "ai-generated", "generativeart", "generative-art"];
 const NSFW_TAGS = ["nsfw"];
+
+// ---- AI review signals — separate from the confirmed, tag-based AI flag above ----
+// Two ways a post can land in "needs manual attention" instead of being auto-classified
+// either way: (1) the post's own text mentions an AI tool without a matching tag, or
+// (2) another visitor flags it. Neither auto-hides the post or forces the AI filter on it —
+// misclassifying real human art as AI would work directly against the site's purpose, so
+// these are surfaced for a human to look at, not treated as confirmed.
+const AI_MENTION_PATTERNS = [
+  "midjourney", "chatgpt", "dall-e", "dalle", "dall·e", "stable diffusion", "stablediffusion",
+  "ai generated", "ai-generated", "generated by ai", "generated with ai", "made with ai",
+  "created with ai", "created using ai", "made using ai", "leonardo.ai", "leonardo ai",
+  "runway ai", "adobe firefly", "artificial intelligence generated"
+];
+function mentionsAI(text) {
+  const lower = (text || "").toLowerCase();
+  return AI_MENTION_PATTERNS.some(p => lower.includes(p));
+}
+
+const FLAG_AI_TAG = "hiveartdiscovery-flag-ai";
+let aiFlagsByPost = new Map(); // "author/permlink" -> [{ by, created, permlink }]
+
+// Dismissing a review flag is local-only, same tradeoff as rejecting a tag suggestion —
+// can't erase someone else's flag post, just stops showing it to this author, here.
+let dismissedAiReviews = new Set(JSON.parse(localStorage.getItem("hiveArtDismissedAiReviews") || "[]"));
+function dismissAiReview(author, permlink) {
+  dismissedAiReviews.add(author + "/" + permlink);
+  localStorage.setItem("hiveArtDismissedAiReviews", JSON.stringify([...dismissedAiReviews]));
+  route();
+}
 
 // "Suggest a tag" — anyone logged in can propose a genre for a post they don't own.
 // Implemented the same way as everything else here: no backend, just a tagged Hive post.
@@ -590,6 +702,114 @@ async function getLatestContainerPost(account) {
   }
 }
 
+// Per-source post counts from the last live fetch — lets you see which tags/communities
+// are actually returning anything, so dead ones are easy to spot and prune from SEEDS.
+let sourceStats = []; // [{ label, count }], sorted ascending so zeros float to the top
+
+// ---- Tag usage history — accumulated going forward, not backfilled ----
+// No backend means no quiet database recording history in the background. Every live
+// fetch (never cache-restores) appends one snapshot per source to a running local log, so
+// the chart starts thin and fills in day by day as the site actually gets used. Pruned to
+// the last 35 days so this doesn't grow unbounded.
+const TAG_HISTORY_KEY = "hiveArtTagHistory";
+const TAG_HISTORY_MAX_AGE = 35 * 24 * 60 * 60 * 1000;
+
+function loadTagHistory() {
+  try { return JSON.parse(localStorage.getItem(TAG_HISTORY_KEY) || "[]"); } catch { return []; }
+}
+function saveTagHistory() {
+  try { localStorage.setItem(TAG_HISTORY_KEY, JSON.stringify(tagHistory)); }
+  catch (e) { console.warn("Tag history save skipped:", e.message); }
+}
+let tagHistory = loadTagHistory(); // [{ timestamp, label, count }]
+
+function recordTagHistory(stats) {
+  const now = Date.now();
+  tagHistory = tagHistory
+    .concat(stats.map(s => ({ timestamp: now, label: s.label, count: s.count })))
+    .filter(r => (now - r.timestamp) < TAG_HISTORY_MAX_AGE);
+  saveTagHistory();
+}
+
+const HISTORY_RANGE_OPTIONS = [
+  { label: "1 Day", days: 1 },
+  { label: "6 Days", days: 6 },
+  { label: "1 Week", days: 7 },
+  { label: "2 Weeks", days: 14 },
+  { label: "3 Weeks", days: 21 },
+  { label: "4 Weeks", days: 28 }
+];
+let historyRangeDays = 7;
+let historySelectedTags = new Set();
+const CHART_COLORS = ["#e0552b", "#7ec8e3", "#e0b25c", "#8dd39e", "#c792ea", "#f06060", "#5cc9e0", "#e0a5e0"];
+
+function dayKey(timestamp) {
+  return new Date(timestamp).toISOString().slice(0, 10); // YYYY-MM-DD
+}
+
+// One value per day for a given tag — the latest snapshot recorded that day, or null if
+// the site wasn't loaded/refreshed at all that day (a real gap, not a zero).
+function buildHistorySeries(label, rangeDays) {
+  const today = new Date();
+  const days = [];
+  for (let i = rangeDays - 1; i >= 0; i--) {
+    const d = new Date(today);
+    d.setUTCDate(d.getUTCDate() - i);
+    days.push(d.toISOString().slice(0, 10));
+  }
+  const byDay = {};
+  tagHistory.filter(r => r.label === label).forEach(r => { byDay[dayKey(r.timestamp)] = r.count; });
+  return days.map(day => ({ day, count: Object.prototype.hasOwnProperty.call(byDay, day) ? byDay[day] : null }));
+}
+
+function renderHistoryChart() {
+  const container = document.getElementById("historyChart");
+  if (!historySelectedTags.size) {
+    container.innerHTML = `<p class="sub">Select one or more tags above to plot their usage.</p>`;
+    return;
+  }
+
+  const labels = [...historySelectedTags];
+  const series = labels.map((label, i) => ({
+    label,
+    color: CHART_COLORS[i % CHART_COLORS.length],
+    points: buildHistorySeries(label, historyRangeDays)
+  }));
+
+  const width = 640, height = 220, padL = 34, padR = 10, padT = 10, padB = 24;
+  const plotW = width - padL - padR, plotH = height - padT - padB;
+  const maxCount = Math.max(1, ...series.flatMap(s => s.points.map(p => p.count || 0)));
+  const n = historyRangeDays;
+  const xFor = i => padL + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);
+  const yFor = c => padT + plotH - (c / maxCount) * plotH;
+
+  const linesSvg = series.map(s => {
+    const pts = s.points.map((p, i) => (p.count === null ? null : `${xFor(i)},${yFor(p.count)}`)).filter(Boolean);
+    const dots = s.points.map((p, i) => p.count === null ? "" :
+      `<circle cx="${xFor(i)}" cy="${yFor(p.count)}" r="2.5" fill="${s.color}"><title>${escapeHtml(s.label)}: ${p.count} on ${p.day}</title></circle>`).join("");
+    return (pts.length > 1 ? `<polyline points="${pts.join(" ")}" fill="none" stroke="${s.color}" stroke-width="2" />` : "") + dots;
+  }).join("");
+
+  const labelEvery = Math.max(1, Math.ceil(n / 8)); // avoid overlapping labels on longer ranges
+  const xLabels = series[0].points.map((p, i) =>
+    i % labelEvery === 0 ? `<text x="${xFor(i)}" y="${height - 6}" font-size="9" fill="var(--muted)" text-anchor="middle">${p.day.slice(5)}</text>` : ""
+  ).join("");
+
+  container.innerHTML = `
+    <svg viewBox="0 0 ${width} ${height}" style="width:100%; max-width:640px; height:auto;">
+      <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${height - padB}" stroke="var(--border)" />
+      <line x1="${padL}" y1="${height - padB}" x2="${width - padR}" y2="${height - padB}" stroke="var(--border)" />
+      <text x="${padL - 6}" y="${padT + 4}" font-size="9" fill="var(--muted)" text-anchor="end">${maxCount}</text>
+      <text x="${padL - 6}" y="${height - padB}" font-size="9" fill="var(--muted)" text-anchor="end">0</text>
+      ${linesSvg}
+      ${xLabels}
+    </svg>
+    <div class="chart-legend">
+      ${series.map(s => `<span><span class="swatch" style="background:${s.color}"></span>${escapeHtml(s.label)}</span>`).join("")}
+    </div>
+  `;
+}
+
 let allPosts = [];
 let activeGenres = new Set();   // empty = all
 let activeSources = new Set();  // empty = all
@@ -636,14 +856,36 @@ async function rpc(method, params) {
   throw lastError || new Error("All API nodes failed");
 }
 
+// Community IDs essentially never change once created, so there's no reason to re-run
+// bridge.list_communities on every single page load — cache the resolution for a week.
+const COMMUNITY_CACHE_KEY = "hiveArtCommunityCache";
+const COMMUNITY_CACHE_MAX_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
+function loadCommunityCache() {
+  try { return JSON.parse(localStorage.getItem(COMMUNITY_CACHE_KEY) || "{}"); } catch { return {}; }
+}
+function saveCommunityCache(cache) {
+  localStorage.setItem(COMMUNITY_CACHE_KEY, JSON.stringify(cache));
+}
+
 async function resolveSeed(seed) {
   if (seed.tag) return { ...seed, tag: seed.tag };
+
+  const cache = loadCommunityCache();
+  const cached = cache[seed.query];
+  if (cached && (Date.now() - cached.cachedAt) < COMMUNITY_CACHE_MAX_AGE) {
+    return { ...seed, tag: cached.tag, resolved: cached.resolved };
+  }
+
   try {
     const results = await rpc("bridge.list_communities", { query: seed.query, limit: 5, sort: "rank" });
     const match = (results || []).find(c =>
       c.title.toLowerCase().includes(seed.query.toLowerCase().split(" ")[0])
     ) || results?.[0];
-    if (match) return { ...seed, tag: match.name, resolved: match.title };
+    if (match) {
+      cache[seed.query] = { tag: match.name, resolved: match.title, cachedAt: Date.now() };
+      saveCommunityCache(cache);
+      return { ...seed, tag: match.name, resolved: match.title };
+    }
   } catch (e) {
     console.warn("Community lookup failed for", seed.label, e);
   }
@@ -679,6 +921,8 @@ function buildPostRecord(post, source) {
   const meta = parseMeta(post);
   const tags = meta.tags || [post.category];
   const { genres, isAI, isNSFW } = classify(tags);
+  // Only flag for text-review if not already confirmed via tags — no point double-flagging.
+  const needsAiReview = !isAI && mentionsAI((post.title || "") + " " + (post.body || ""));
   return {
     author: post.author,
     permlink: post.permlink,
@@ -686,7 +930,7 @@ function buildPostRecord(post, source) {
     source: source || "Pinned",
     created: post.created,
     image: firstImage(post, meta),
-    genres, isAI, isNSFW,
+    genres, isAI, isNSFW, needsAiReview,
     body: post.body,
     parentAuthor: post.parent_author,
     parentPermlink: post.parent_permlink,
@@ -914,6 +1158,60 @@ async function loadSuggestions() {
   }
 }
 
+// ---- Flagging a post as possibly AI-generated (a visitor's call, not the author's) ----
+async function flagAsAI(targetAuthor, targetPermlink) {
+  if (!currentUser) { login(); return; }
+  if (currentUser === targetAuthor) return; // can't flag your own post
+
+  const key = targetAuthor + "/" + targetPermlink;
+  const existing = aiFlagsByPost.get(key) || [];
+  if (existing.some(f => f.by === currentUser)) {
+    alert("You already flagged this post.");
+    return;
+  }
+  if (!confirm(`Flag @${targetAuthor}'s post as possibly AI-generated? This is visible publicly and doesn't auto-hide the post — it just marks it for review.`)) return;
+
+  const permlink = ("hiveartdiscovery-flag-ai-" + targetAuthor + "-" + Date.now()).toLowerCase().replace(/[^a-z0-9-]/g, "-").slice(0, 255);
+  const title = `AI flag for @${targetAuthor}`;
+  const body = `Flagging [this piece](https://peakd.com/@${targetAuthor}/${targetPermlink}) as possibly AI-generated, for review — via Hive Art Discovery.`;
+  const jsonMetadata = JSON.stringify({
+    tags: [FLAG_AI_TAG],
+    app: "hive-art-discovery/0.1",
+    aiFlag: { targetAuthor, targetPermlink }
+  });
+
+  const result = await broadcastComment({
+    author: currentUser, permlink, title, body,
+    parentAuthor: "", parentPermlink: FLAG_AI_TAG, jsonMetadata
+  });
+
+  if (result.success) {
+    if (!aiFlagsByPost.has(key)) aiFlagsByPost.set(key, []);
+    aiFlagsByPost.get(key).push({ by: currentUser, created: new Date().toISOString(), permlink });
+    route();
+  } else {
+    alert("Failed to submit flag: " + result.message);
+  }
+}
+
+async function loadAiFlags() {
+  try {
+    const posts = await rpc("bridge.get_ranked_posts", { sort: "created", tag: FLAG_AI_TAG, observer: "" });
+    const fresh = new Map();
+    for (const p of posts) {
+      const meta = parseMeta(p);
+      const f = meta.aiFlag;
+      if (!f || !f.targetAuthor || !f.targetPermlink) continue;
+      const key = f.targetAuthor + "/" + f.targetPermlink;
+      if (!fresh.has(key)) fresh.set(key, []);
+      fresh.get(key).push({ by: p.author, created: p.created, permlink: p.permlink });
+    }
+    aiFlagsByPost = fresh;
+  } catch (e) {
+    console.warn("Failed to load AI flags", e);
+  }
+}
+
 // ---- Suggesting a new genre for the site's taxonomy (not tied to one post) ----
 async function loadGenreSuggestions() {
   try {
@@ -928,6 +1226,53 @@ async function loadGenreSuggestions() {
     console.warn("Failed to load genre suggestions", e);
     genreSuggestions = [];
   }
+}
+
+function renderSourceStats() {
+  const el = document.getElementById("statsPanel");
+  if (!sourceStats.length) {
+    el.innerHTML = `<p class="sub">No stats yet — hit Refresh to fetch live and generate them.</p>`;
+    return;
+  }
+  const zeroCount = sourceStats.filter(s => s.count === 0).length;
+  const allLabels = sourceStats.map(s => s.label);
+
+  el.innerHTML = `
+    <p class="sub">Raw post count per source from the last live fetch, before dedup — sources sitting at 0 aren't finding anything right now and are candidates to drop from the tag list. ${zeroCount ? `${zeroCount} at zero this load.` : "None at zero this load."} One 0 doesn't necessarily mean a dead tag (post volume varies day to day) — worth checking a few refreshes over time before removing one.</p>
+    <table>
+      ${sourceStats.map(s => `
+        <tr class="${s.count === 0 ? "zero" : ""}">
+          <td>${escapeHtml(s.label)}</td>
+          <td class="count">${s.count}</td>
+        </tr>
+      `).join("")}
+    </table>
+
+    <p class="sub" style="margin-top:16px;">📈 Usage over time — builds up from today's visits/refreshes onward, so this starts thin and fills in over the coming days/weeks.</p>
+    <div class="history-controls" id="historyRangeButtons">
+      ${HISTORY_RANGE_OPTIONS.map(r => `<button class="chip${r.days === historyRangeDays ? " active" : ""}" data-days="${r.days}">${r.label}</button>`).join("")}
+    </div>
+    <div class="history-tags" id="historyTagCheckboxes">
+      ${allLabels.map(label => `
+        <label><input type="checkbox" data-label="${escapeHtml(label)}" ${historySelectedTags.has(label) ? "checked" : ""}> ${escapeHtml(label)}</label>
+      `).join("")}
+    </div>
+    <div id="historyChart"></div>
+  `;
+
+  el.querySelectorAll("#historyRangeButtons .chip").forEach(btn => {
+    btn.onclick = () => {
+      historyRangeDays = Number(btn.dataset.days);
+      renderSourceStats(); // re-render whole panel so the active button state updates too
+    };
+  });
+  el.querySelectorAll("#historyTagCheckboxes input").forEach(cb => {
+    cb.onchange = () => {
+      cb.checked ? historySelectedTags.add(cb.dataset.label) : historySelectedTags.delete(cb.dataset.label);
+      renderHistoryChart();
+    };
+  });
+  renderHistoryChart();
 }
 
 function renderGenreSuggestions() {
@@ -973,8 +1318,61 @@ async function suggestGenre() {
   }
 }
 
-async function loadAll() {
+// Caches the whole merged result (not just community lookups) so a page reload within a
+// few minutes is instant instead of re-running all 22 tag/community fetches. Deliberately
+// short-lived (3 min) and always bypassed by the Refresh button, which forces a true live
+// fetch regardless of cache age — a load can be a little stale, but Refresh never is.
+const FEED_CACHE_KEY = "hiveArtFeedCache";
+const FEED_CACHE_MAX_AGE = 3 * 60 * 1000; // 3 minutes
+
+function loadFeedCache() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(FEED_CACHE_KEY) || "null");
+    if (!raw || (Date.now() - raw.cachedAt) > FEED_CACHE_MAX_AGE) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+
+function saveFeedCache() {
+  try {
+    localStorage.setItem(FEED_CACHE_KEY, JSON.stringify({
+      cachedAt: Date.now(),
+      allPosts,
+      suggestionsByPost: [...suggestionsByPost.entries()],
+      genreSuggestions,
+      aiFlagsByPost: [...aiFlagsByPost.entries()],
+      sourceStats
+    }));
+  } catch (e) {
+    // Caching is a nice-to-have (e.g. localStorage quota exceeded on a big feed) —
+    // never let it break the page if it fails.
+    console.warn("Feed cache save skipped:", e.message);
+  }
+}
+
+async function loadAll(forceRefresh = false) {
   const status = document.getElementById("status");
+
+  if (!forceRefresh) {
+    const cached = loadFeedCache();
+    if (cached) {
+      allPosts = cached.allPosts;
+      suggestionsByPost = new Map(cached.suggestionsByPost);
+      genreSuggestions = cached.genreSuggestions;
+      aiFlagsByPost = new Map(cached.aiFlagsByPost);
+      sourceStats = cached.sourceStats || [];
+      renderGenreSuggestions();
+      renderSourceStats();
+      buildFilterChips();
+      route();
+      const ageSec = Math.round((Date.now() - cached.cachedAt) / 1000);
+      status.textContent = `${allPosts.length} posts loaded from cache (${ageSec}s old) — click Refresh for the latest.`;
+      return;
+    }
+  }
+
   status.textContent = "Resolving communities…";
   const resolved = await Promise.all(SEEDS.map(resolveSeed));
 
@@ -989,6 +1387,14 @@ async function loadAll() {
     }
   }));
 
+  // Raw per-source counts, before dedup — this is what actually shows which tags/
+  // communities are finding anything, sorted ascending so zeros are easy to spot.
+  sourceStats = resolved
+    .map((seed, i) => ({ label: seed.label, count: (results[i] || []).length }))
+    .sort((a, b) => a.count - b.count);
+  recordTagHistory(sourceStats); // only on true live fetches — never from the feed cache
+  renderSourceStats();
+
   const seen = new Set();
   allPosts = [];
   for (const list of results) {
@@ -1002,13 +1408,15 @@ async function loadAll() {
   allPosts.sort((a, b) => new Date(b.created) - new Date(a.created));
 
   status.textContent = "Loading suggestions…";
-  await loadSuggestions();
-  await loadGenreSuggestions();
+  // These three don't depend on each other — running them in parallel instead of one
+  // after another cuts this stage's wall-clock time roughly to a third.
+  await Promise.all([loadSuggestions(), loadGenreSuggestions(), loadAiFlags()]);
   renderGenreSuggestions();
 
   buildFilterChips();
   route();
   status.textContent = `${allPosts.length} posts loaded across ${SEEDS.length} sources.`;
+  saveFeedCache();
 }
 
 function buildFilterChips() {
@@ -1053,8 +1461,11 @@ function buildFilterChips() {
 
 // Shared card markup — used by both the main feed grid and a profile's pinned grid.
 function cardTemplate(p) {
-  const suggestions = (suggestionsByPost.get(p.author + "/" + p.permlink) || [])
-    .filter(s => !rejectedSuggestions.has(p.author + "/" + p.permlink + "/" + s.tag));
+  const key = p.author + "/" + p.permlink;
+  const suggestions = (suggestionsByPost.get(key) || [])
+    .filter(s => !rejectedSuggestions.has(key + "/" + s.tag));
+  const aiFlags = dismissedAiReviews.has(key) ? [] : (aiFlagsByPost.get(key) || []);
+  const showReview = !dismissedAiReviews.has(key) && (p.needsAiReview || aiFlags.length > 0);
   return `
     <div class="card">
       <a href="https://peakd.com/@${p.author}/${p.permlink}" target="_blank" rel="noopener" style="text-decoration:none;color:inherit;">
@@ -1073,6 +1484,14 @@ function cardTemplate(p) {
         <a href="#profile/${encodeURIComponent(p.author)}" class="profile-link">👤 @${p.author}'s profile</a>
         <button class="vote-btn" onclick="vote('${p.author}','${p.permlink}', this)">▲ Upvote</button>
         ${currentUser ? `<button class="vote-btn" onclick="togglePin('${p.author}','${p.permlink}')">${isPinned(p.author, p.permlink) ? "📌 Pinned — click to unpin" : "📌 Pin to profile"}</button>` : ""}
+        ${currentUser && currentUser !== p.author ? `<button class="flag-btn" onclick="flagAsAI('${p.author}','${p.permlink}')">🚩 Flag as AI</button>` : ""}
+        ${showReview ? `
+          <div class="ai-review">
+            ${p.needsAiReview ? `<span class="review-chip">🔍 Mentions AI in text</span>` : ""}
+            ${aiFlags.length ? `<span class="review-chip">🚩 Flagged by ${aiFlags.map(f => "@" + f.by).join(", ")}</span>` : ""}
+            ${currentUser === p.author ? `<button class="reject-btn" onclick="dismissAiReview('${p.author}','${p.permlink}')">Dismiss</button>` : ""}
+          </div>
+        ` : ""}
         ${suggestions.length ? `
           <div class="suggestions">
             ${suggestions.map(s => `
@@ -1318,6 +1737,7 @@ async function renderWipView() {
 
 function route() {
   const hash = location.hash;
+  document.getElementById("statsPanel").style.display = "none";
   if (hash.startsWith("#profile/")) {
     document.getElementById("wipHeader").style.display = "none";
     renderProfileView(decodeURIComponent(hash.slice("#profile/".length)));
@@ -1349,10 +1769,14 @@ document.getElementById("aiToggle").addEventListener("change", () => { savePrefs
 document.getElementById("followingToggle").addEventListener("change", () => { savePrefs(); render(); });
 document.getElementById("refreshBtn").addEventListener("click", () => {
   document.getElementById("refreshBtn").disabled = true;
-  loadAll().finally(() => { document.getElementById("refreshBtn").disabled = false; });
+  loadAll(true).finally(() => { document.getElementById("refreshBtn").disabled = false; }); // true = bypass cache, always live
 });
 
 document.getElementById("suggestGenreBtn").addEventListener("click", suggestGenre);
+document.getElementById("statsBtn").addEventListener("click", () => {
+  const panel = document.getElementById("statsPanel");
+  panel.style.display = panel.style.display === "none" ? "block" : "none";
+});
 
 handleHivesignerRedirect(); // pick up ?access_token=... if we just came back from HiveSigner
 renderAuthControls();
