@@ -57,6 +57,11 @@
     letter-spacing: 0.04em;
     color: var(--muted);
   }
+  .filter-group label.group-label .sub {
+    text-transform: none;
+    font-size: 11px;
+    margin-left: 4px;
+  }
   .chips {
     display: flex;
     flex-wrap: wrap;
@@ -75,6 +80,25 @@
     background: var(--accent-soft);
     border-color: var(--accent);
     color: var(--accent);
+  }
+  .chip.excluded {
+    background: rgba(240, 96, 96, 0.15);
+    border-color: #f06060;
+    color: #f06060;
+    text-decoration: line-through;
+  }
+  .search-box {
+    display: flex;
+    gap: 6px;
+  }
+  .search-box input[type="text"] {
+    font-size: 13px;
+    background: var(--panel);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 6px 10px;
+    min-width: 180px;
   }
   .toggle-row {
     display: flex;
@@ -106,11 +130,22 @@
     color: var(--muted);
     font-size: 13px;
   }
-  #grid {
+  #grid, .grid {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
     gap: 16px;
     padding: 8px 24px 40px;
+  }
+  .profile-section .grid { padding: 8px 0 32px; }
+  .profile-section h3 {
+    margin: 16px 0 4px;
+    font-size: 15px;
+  }
+  .profile-section h3 .sub {
+    font-size: 12px;
+    font-weight: normal;
+    color: var(--muted);
+    margin-left: 6px;
   }
   .card {
     background: var(--card);
@@ -348,7 +383,8 @@
     gap: 8px;
     max-width: 520px;
   }
-  #wipForm textarea, #wipForm input[type="text"] {
+  #wipForm textarea, #wipForm input[type="text"],
+  #submitForm textarea, #submitForm input[type="text"], #submitForm select {
     background: var(--card);
     color: var(--text);
     border: 1px solid var(--border);
@@ -358,6 +394,7 @@
     font-family: inherit;
   }
   #wipForm textarea { min-height: 70px; resize: vertical; }
+  #submitForm textarea { min-height: 160px; resize: vertical; }
   .wip-crosspost {
     display: flex;
     flex-wrap: wrap;
@@ -367,6 +404,37 @@
     color: var(--muted);
   }
   .wip-crosspost label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  #submitHeader {
+    display: none;
+    padding: 20px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+  #submitHeader h2 { margin: 0 0 4px; }
+  #submitForm {
+    margin-top: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 560px;
+  }
+  #submitForm label.field-label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 3px;
+  }
+  #submitForm .field { display: flex; flex-direction: column; }
+  #submitForm .checkbox-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    font-size: 13px;
+  }
+  #submitForm .checkbox-group label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+  #submitForm .conditional-field { display: none; }
+  #submitForm .conditional-field.shown { display: flex; flex-direction: column; }
   .ai-review {
     display: flex;
     flex-wrap: wrap;
@@ -401,6 +469,7 @@
       <p>Live from Hive's public API · Sketchbook, Alien Art Hive, DrawADay, Photography Lovers + <code>art</code>/<code>traditionalart</code>/<code>digitalart</code>/<code>humanart</code> tags · fully automated tagging, no manual curation</p>
     </div>
     <div style="display:flex; align-items:center; gap:10px;">
+      <a href="#submit" class="user-chip" style="text-decoration:none;">📮 Submit Art</a>
       <a href="#wip" class="user-chip" style="text-decoration:none;">🚧 WIP Feed</a>
       <div id="authControls"></div>
     </div>
@@ -413,12 +482,24 @@
 
 <div class="filters">
   <div class="filter-group">
+    <label class="group-label">Search <span class="sub">e.g. "cats" also catches catart</span></label>
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="Search a subject, e.g. cats" maxlength="40">
+      <button class="chip" id="searchBtn">🔍 Search</button>
+      <button class="chip" id="searchClearBtn" style="display:none;">✕ Clear</button>
+    </div>
+  </div>
+  <div class="filter-group">
     <label class="group-label">Genre</label>
     <div class="chips" id="genreChips"></div>
   </div>
   <div class="filter-group">
     <label class="group-label">Source</label>
     <div class="chips" id="sourceChips"></div>
+  </div>
+  <div class="filter-group">
+    <label class="group-label">Exclude tags <span class="sub">click a tag to hide anything carrying it, e.g. photography</span></label>
+    <div class="chips" id="excludeTagChips"></div>
   </div>
   <div class="toggle-row warn">
     <input type="checkbox" id="nsfwToggle">
@@ -447,6 +528,7 @@
 <div id="status">Loading…</div>
 <div id="profileHeader"></div>
 <div id="wipHeader"></div>
+<div id="submitHeader"></div>
 <div id="grid"></div>
 
 <script>
@@ -493,21 +575,22 @@ const SEEDS = [
   { label: "#knitting tag", tag: "knitting" },
   { label: "#embroidery tag", tag: "embroidery" },
   { label: "#animation tag", tag: "animation" },
-  { label: "#crochet tag", tag: "crochet" }
+  { label: "#crochet tag", tag: "crochet" },
+  { label: "#crossstitch tag", tag: "crossstitch" }  // added alongside the submit form's fabric/fibre arts option
 ];
 
 // Genre rule set — automated, tag-driven, no manual curation.
 // Note: generativeart is treated as AI-generated (see AI_TAGS below), not a genre —
 // pixel art (hand-made) and generative/algorithmic art are not the same thing.
 const GENRE_RULES = [
-  { genre: "Painting", tags: ["painting", "watercolor", "acrylic", "oilpainting", "gouache"] },
-  { genre: "Drawing & Sketch", tags: ["sketch", "sketchbook", "drawing", "doodle", "drawaday", "pencildrawing", "pencil", "ink", "inktober"] },
+  { genre: "Painting", tags: ["painting", "watercolor", "acrylic", "oilpainting", "gouache", "pastels"] },
+  { genre: "Drawing & Sketch", tags: ["sketch", "sketchbook", "drawing", "doodle", "drawaday", "pencildrawing", "pencil", "ink", "inktober", "pencilcrayons"] },
   { genre: "Digital Art", tags: ["digitalart", "digital-art", "procreate", "photoshopart"] },
   { genre: "Illustration", tags: ["illustration", "conceptart", "characterdesign"] },
-  { genre: "Photography", tags: ["photography", "photo", "photofeed", "macrophotography", "naturephotography", "microphotography", "photographylovers"] },
+  { genre: "Photography", tags: ["photography", "photo", "photofeed", "macrophotography", "naturephotography", "microphotography", "photographylovers", "landscapephotography"] },
   { genre: "Sculpture & 3D", tags: ["sculpture", "3dart", "zbrush", "blender3d", "blender"] },
   { genre: "Pixel Art", tags: ["pixelart", "glitchart"] },
-  { genre: "Mixed Media & Craft", tags: ["mixedmedia", "craft", "papercraft", "embroidery", "knitting", "crochet"] },
+  { genre: "Mixed Media & Craft", tags: ["mixedmedia", "craft", "papercraft", "embroidery", "knitting", "crochet", "fiberart", "crossstitch"] },
   { genre: "Animation", tags: ["animation", "animated", "motiongraphics"] },
   { genre: "NFT / Crypto Art", tags: ["nft", "nftshowroom", "cryptoart"] },
   { genre: "Splinterlands", tags: ["splinterlands", "splinterlandsart", "splinterlandsartcontest"] },
@@ -581,6 +664,20 @@ function pinsPermlinkFor(username) {
   return PINS_TAG + "-" + username.replace(/\./g, "-");
 }
 let myPins = []; // pins for currentUser, kept in memory once logged in
+
+// ---- Artist portfolio: an artist's own hand-picked 1-10 posts, distinct from "pinned
+// favorites" above (which can be anyone's work). Same one-post-per-user, edited-in-place
+// pattern, just a second container with its own tag/permlink and its own rule: only the
+// author's own posts qualify, capped at 10. ----
+const PORTFOLIO_TAG = "hiveartdiscovery-portfolio";
+const PORTFOLIO_MAX = 10;
+function portfolioPermlinkFor(username) {
+  return PORTFOLIO_TAG + "-" + username.replace(/\./g, "-");
+}
+let myPortfolio = []; // portfolio picks for currentUser
+function isInPortfolio(author, permlink) {
+  return myPortfolio.some(p => p.author === author && p.permlink === permlink);
+}
 
 // ---- HiveSigner: a login alternative for people without the Keychain browser extension ----
 // SETUP REQUIRED before this works: register an app at https://hivesigner.com/apps/new using
@@ -702,6 +799,48 @@ async function getLatestContainerPost(account) {
   }
 }
 
+// Shared by both the WIP form and the full artwork submit form — cross-posts a note as
+// a reply to whichever container post (Snap/Wave) is currently active. Returns an array
+// of human-readable failure messages (empty if everything requested succeeded).
+async function crosspostToSnapWave(body, shareSnap, shareWave, permPrefix, note) {
+  const crosspostBody = `${body}\n\n(${note})`;
+  const failures = [];
+
+  if (shareSnap) {
+    const container = await getLatestContainerPost(SNAPS_ACCOUNT);
+    if (container) {
+      const r = await broadcastComment({
+        author: currentUser,
+        permlink: (`${permPrefix}-snap-` + Date.now()).toLowerCase(),
+        title: "", body: crosspostBody,
+        parentAuthor: container.author, parentPermlink: container.permlink,
+        jsonMetadata: JSON.stringify({ tags: [SNAPS_ACCOUNT], app: "hive-art-discovery/0.1" })
+      });
+      if (!r.success) failures.push("cross-posting as a Snap failed: " + r.message);
+    } else {
+      failures.push("couldn't find the current Snaps container to cross-post into.");
+    }
+  }
+
+  if (shareWave) {
+    const container = await getLatestContainerPost(WAVES_ACCOUNT);
+    if (container) {
+      const r = await broadcastComment({
+        author: currentUser,
+        permlink: (`${permPrefix}-wave-` + Date.now()).toLowerCase(),
+        title: "", body: crosspostBody,
+        parentAuthor: container.author, parentPermlink: container.permlink,
+        jsonMetadata: JSON.stringify({ tags: [WAVES_ACCOUNT], app: "hive-art-discovery/0.1" })
+      });
+      if (!r.success) failures.push("cross-posting as a Wave failed: " + r.message);
+    } else {
+      failures.push("couldn't find the current Waves container to cross-post into.");
+    }
+  }
+
+  return failures;
+}
+
 // Per-source post counts from the last live fetch — lets you see which tags/communities
 // are actually returning anything, so dead ones are easy to spot and prune from SEEDS.
 let sourceStats = []; // [{ label, count }], sorted ascending so zeros float to the top
@@ -813,6 +952,8 @@ function renderHistoryChart() {
 let allPosts = [];
 let activeGenres = new Set();   // empty = all
 let activeSources = new Set();  // empty = all
+let excludedTags = new Set();   // empty = nothing excluded; hides any post carrying one of these raw tags
+let searchQuery = "";           // empty = no active search
 let currentUser = localStorage.getItem("hiveArtUser") || null;
 let authMethod = localStorage.getItem("hiveArtAuthMethod") || null; // "keychain" | "hivesigner" | null
 let followedSet = new Set();
@@ -825,6 +966,7 @@ function savePrefs() {
   localStorage.setItem("hiveArtPrefs", JSON.stringify({
     genres: [...activeGenres],
     sources: [...activeSources],
+    excludedTags: [...excludedTags],
     nsfw: document.getElementById("nsfwToggle").checked,
     ai: document.getElementById("aiToggle").checked,
     followingOnly: document.getElementById("followingToggle").checked
@@ -943,6 +1085,92 @@ function isPinned(author, permlink) {
   return myPins.some(p => p.author === author && p.permlink === permlink);
 }
 
+// ---- Search: find art about a subject beyond whatever the main sweep already loaded ----
+// Same Layer-1 "is this actually art" whitelist used for the main sweep — see
+// [[Taxonomy and Genre Classification]] in the vault.
+const ART_SIGNAL_TAGS = ["art", "traditionalart", "digitalart", "humanart"];
+
+// Rough, deliberately simple singularizer — "cats" -> "cat" — so a search also
+// substring-matches tags like "catart" that use the singular form. Not real stemming,
+// just a trailing-s strip; good enough for common Hive tag conventions.
+function searchRoot(query) {
+  const q = query.trim().toLowerCase();
+  return (q.length > 3 && q.endsWith("s")) ? q.slice(0, -1) : q;
+}
+
+// Hive tags can't be wildcard-searched — you can only ask for an exact tag — so a
+// search has to guess plausible candidate tags to actually fetch. Covers the query as
+// typed, its rough singular, and both combined with the common "<subject>art" naming
+// convention (catart, dogart, birdart, etc). Imperfect by nature: a search will only
+// ever surface tags it thought to guess.
+function searchTagCandidates(query) {
+  const q = query.trim().toLowerCase().replace(/\s+/g, "");
+  const root = searchRoot(query).replace(/\s+/g, "");
+  return [...new Set([q, root, `${root}art`, `${q}art`])].filter(t => t.length >= 2);
+}
+
+function matchesSearch(p, query) {
+  const root = searchRoot(query);
+  const q = query.trim().toLowerCase();
+  const haystack = ((p.title || "") + " " + (p.rawTags || []).join(" ")).toLowerCase();
+  return haystack.includes(root) || haystack.includes(q);
+}
+
+async function runSearch() {
+  const input = document.getElementById("searchInput");
+  const query = input.value.trim();
+  searchQuery = query;
+  document.getElementById("searchClearBtn").style.display = query ? "" : "none";
+  if (!query) { render(); return; }
+
+  const status = document.getElementById("status");
+  status.textContent = `Searching "${query}"…`;
+
+  const candidates = searchTagCandidates(query);
+  const seen = new Set(allPosts.map(p => p.author + "/" + p.permlink));
+  let added = 0;
+
+  const results = await Promise.all(candidates.map(async tag => {
+    try {
+      const posts = await rpc("bridge.get_ranked_posts", { sort: "created", tag, observer: "" });
+      return posts.map(post => ({ post, tag }));
+    } catch (e) {
+      console.warn("Search fetch failed for tag", tag, e);
+      return [];
+    }
+  }));
+
+  for (const list of results) {
+    for (const { post, tag } of list) {
+      const key = post.author + "/" + post.permlink;
+      if (seen.has(key)) continue;
+      const tags = parseMeta(post).tags || [];
+      // The matched tag itself reads as art (contains "art", e.g. "catart"), or the
+      // post separately carries one of the site's core art-signal tags — same
+      // Layer-1 logic as the main sweep, just applied per search hit. Filters out,
+      // say, someone's tagged "cats" pet photo with no art signal at all.
+      const looksLikeArt = tag.includes("art") || tags.some(t => ART_SIGNAL_TAGS.includes((t || "").toLowerCase()));
+      if (!looksLikeArt) continue;
+      seen.add(key);
+      added++;
+      allPosts.push(buildPostRecord(post, `Search: ${query}`));
+    }
+  }
+
+  allPosts.sort((a, b) => new Date(b.created) - new Date(a.created));
+  status.textContent = added
+    ? `Search "${query}" found ${added} new post${added === 1 ? "" : "s"}.`
+    : `No new posts found for "${query}" — showing anything already loaded that matches.`;
+  render();
+}
+
+function clearSearch() {
+  document.getElementById("searchInput").value = "";
+  document.getElementById("searchClearBtn").style.display = "none";
+  searchQuery = "";
+  render();
+}
+
 // ---- Auth (Hive Keychain or HiveSigner — no passwords, no private keys touch this site either way) ----
 function renderAuthControls() {
   const el = document.getElementById("authControls");
@@ -958,6 +1186,7 @@ function renderAuthControls() {
     document.querySelector("#followingToggle + div .sub").textContent = "posts from people you follow";
     loadFollowing();
     loadMyPins();
+    loadMyPortfolio();
   } else {
     el.innerHTML = `
       <button class="chip" id="loginKeychainBtn">Log in with Keychain</button>
@@ -968,6 +1197,7 @@ function renderAuthControls() {
     document.getElementById("followingToggle").disabled = true;
     document.getElementById("followingToggle").checked = false;
     myPins = [];
+    myPortfolio = [];
   }
 }
 
@@ -1012,6 +1242,7 @@ function logout() {
   authMethod = null;
   followedSet = new Set();
   myPins = [];
+  myPortfolio = [];
   localStorage.removeItem("hiveArtUser");
   localStorage.removeItem("hiveArtAuthMethod");
   localStorage.removeItem("hiveArtHivesignerToken");
@@ -1422,18 +1653,29 @@ async function loadAll(forceRefresh = false) {
 function buildFilterChips() {
   const genreEl = document.getElementById("genreChips");
   const sourceEl = document.getElementById("sourceChips");
+  const excludeEl = document.getElementById("excludeTagChips");
   const genres = [...new Set(allPosts.flatMap(p => p.genres))].sort();
   const sources = [...new Set(SEEDS.map(s => s.label))];
+  // Exclude-tag chips are drawn from the same curated tag-sweep vocabulary as the Source
+  // filter (bounded, ~18 tags) rather than every raw tag on every post (which could run
+  // into the hundreds and make the filter bar unusable). Matching still happens against
+  // each post's actual rawTags, though — not its dedup-assigned source — so excluding
+  // "photography" hides any post carrying that tag, even one that surfaced via a
+  // community feed or a different tag in the sweep.
+  const excludableTags = [...new Set(SEEDS.filter(s => s.tag).map(s => s.tag))].sort();
 
   genreEl.innerHTML = genres.map(g =>
     `<button class="chip" data-genre="${g}">${g}</button>`).join("");
   sourceEl.innerHTML = sources.map(s =>
     `<button class="chip" data-source="${s}">${s}</button>`).join("");
+  excludeEl.innerHTML = excludableTags.map(t =>
+    `<button class="chip" data-tag="${t}">${t}</button>`).join("");
 
-  // Restore saved genre/source selections (once, on first build) from localStorage.
-  if (!buildFilterChips.restored && (savedPrefs.genres?.length || savedPrefs.sources?.length)) {
+  // Restore saved genre/source/excluded-tag selections (once, on first build) from localStorage.
+  if (!buildFilterChips.restored && (savedPrefs.genres?.length || savedPrefs.sources?.length || savedPrefs.excludedTags?.length)) {
     (savedPrefs.genres || []).forEach(g => activeGenres.add(g));
     (savedPrefs.sources || []).forEach(s => activeSources.add(s));
+    (savedPrefs.excludedTags || []).forEach(t => excludedTags.add(t));
     buildFilterChips.restored = true;
   }
 
@@ -1453,6 +1695,16 @@ function buildFilterChips() {
       const s = chip.dataset.source;
       activeSources.has(s) ? activeSources.delete(s) : activeSources.add(s);
       chip.classList.toggle("active");
+      savePrefs();
+      render();
+    };
+  });
+  excludeEl.querySelectorAll(".chip").forEach(chip => {
+    if (excludedTags.has(chip.dataset.tag)) chip.classList.add("excluded");
+    chip.onclick = () => {
+      const t = chip.dataset.tag;
+      excludedTags.has(t) ? excludedTags.delete(t) : excludedTags.add(t);
+      chip.classList.toggle("excluded");
       savePrefs();
       render();
     };
@@ -1484,6 +1736,7 @@ function cardTemplate(p) {
         <a href="#profile/${encodeURIComponent(p.author)}" class="profile-link">👤 @${p.author}'s profile</a>
         <button class="vote-btn" onclick="vote('${p.author}','${p.permlink}', this)">▲ Upvote</button>
         ${currentUser ? `<button class="vote-btn" onclick="togglePin('${p.author}','${p.permlink}')">${isPinned(p.author, p.permlink) ? "📌 Pinned — click to unpin" : "📌 Pin to profile"}</button>` : ""}
+        ${currentUser && currentUser === p.author ? `<button class="vote-btn" onclick="togglePortfolio('${p.author}','${p.permlink}')">${isInPortfolio(p.author, p.permlink) ? "🎨 In portfolio — click to remove" : myPortfolio.length >= PORTFOLIO_MAX ? "🎨 Portfolio full (10/10)" : "🎨 Add to portfolio"}</button>` : ""}
         ${currentUser && currentUser !== p.author ? `<button class="flag-btn" onclick="flagAsAI('${p.author}','${p.permlink}')">🚩 Flag as AI</button>` : ""}
         ${showReview ? `
           <div class="ai-review">
@@ -1530,9 +1783,18 @@ function render() {
   const filtered = allPosts.filter(p => {
     if (p.isNSFW && !showNSFW) return false;
     if (p.isAI && !showAI) return false;
-    if (activeGenres.size && !p.genres.some(g => activeGenres.has(g))) return false;
-    if (activeSources.size && !activeSources.has(p.source)) return false;
+    if (excludedTags.size && (p.rawTags || []).some(t => excludedTags.has(t))) return false;
     if (followingOnly && currentUser && !followedSet.has(p.author)) return false;
+    if (searchQuery) {
+      // Active search narrows to matches only. Genre/Source chips are skipped here —
+      // search results (e.g. a "catart" post) usually fall outside both, since they
+      // weren't necessarily found via the regular sweep or a matched genre rule, and
+      // hiding them behind unrelated chip selections would make search feel broken.
+      if (!matchesSearch(p, searchQuery)) return false;
+    } else {
+      if (activeGenres.size && !p.genres.some(g => activeGenres.has(g))) return false;
+      if (activeSources.size && !activeSources.has(p.source)) return false;
+    }
     return true;
   });
 
@@ -1580,6 +1842,52 @@ async function loadMyPins() {
   route();
 }
 
+// ---- Artist portfolio: same container-post pattern as pins, but a second post
+// (own tag/permlink) so it stays fully separate from the general favorites above.
+// Only the artist's own posts can go in, capped at PORTFOLIO_MAX. ----
+async function loadUserPortfolio(username) {
+  try {
+    const post = await rpc("bridge.get_post", { author: username, permlink: portfolioPermlinkFor(username), observer: "" });
+    const meta = post ? parseMeta(post) : {};
+    return Array.isArray(meta.portfolio) ? meta.portfolio : [];
+  } catch (e) {
+    return []; // no portfolio post yet for this user
+  }
+}
+
+async function togglePortfolio(author, permlink) {
+  if (!currentUser) { login(); return; }
+  if (currentUser !== author) { alert("You can only add your own posts to your portfolio."); return; }
+  const idx = myPortfolio.findIndex(p => p.author === author && p.permlink === permlink);
+  if (idx < 0 && myPortfolio.length >= PORTFOLIO_MAX) {
+    alert(`Your portfolio is full (${PORTFOLIO_MAX} max). Remove one before adding another.`);
+    return;
+  }
+  const updated = idx >= 0 ? myPortfolio.filter((_, i) => i !== idx) : [...myPortfolio, { author, permlink }];
+  const title = `${currentUser}'s portfolio — Hive Art Discovery`;
+  const body = `A hand-picked selection of ${currentUser}'s own work, managed via Hive Art Discovery. This post is managed automatically — edits happen through the site, not by hand.`;
+  const jsonMetadata = JSON.stringify({ tags: [PORTFOLIO_TAG], app: "hive-art-discovery/0.1", portfolio: updated });
+
+  const result = await broadcastComment({
+    author: currentUser,
+    permlink: portfolioPermlinkFor(currentUser),
+    title, body,
+    parentAuthor: "", parentPermlink: PORTFOLIO_TAG, jsonMetadata
+  });
+
+  if (result.success) {
+    myPortfolio = updated;
+    route();
+  } else {
+    alert("Failed to update portfolio: " + result.message);
+  }
+}
+
+async function loadMyPortfolio() {
+  myPortfolio = await loadUserPortfolio(currentUser);
+  route();
+}
+
 async function renderProfileView(username) {
   document.querySelector(".filters").style.display = "none";
   document.getElementById("genreSuggestionsBar").style.display = "none";
@@ -1591,31 +1899,49 @@ async function renderProfileView(username) {
 
   const pins = username === currentUser ? myPins : await loadUserPins(username);
   if (username === currentUser) myPins = pins;
+  const portfolio = username === currentUser ? myPortfolio : await loadUserPortfolio(username);
+  if (username === currentUser) myPortfolio = portfolio;
 
-  const resolved = (await Promise.all(pins.map(async pin => {
+  const resolve = async (list, sourceLabel) => (await Promise.all(list.map(async item => {
     try {
-      const post = await rpc("bridge.get_post", { author: pin.author, permlink: pin.permlink, observer: "" });
-      return post ? buildPostRecord(post, "Pinned") : null;
+      const post = await rpc("bridge.get_post", { author: item.author, permlink: item.permlink, observer: "" });
+      return post ? buildPostRecord(post, sourceLabel) : null;
     } catch {
       return null;
     }
   }))).filter(Boolean);
 
-  // Register resolved pins in the shared post cache so vote/tag-add/suggest all keep working here too.
-  resolved.forEach(rec => {
+  const [resolvedPortfolio, resolvedPins] = await Promise.all([
+    resolve(portfolio, "Portfolio"),
+    resolve(pins, "Pinned")
+  ]);
+
+  // Register resolved posts in the shared post cache so vote/tag-add/suggest all keep working here too.
+  [...resolvedPortfolio, ...resolvedPins].forEach(rec => {
     const i = allPosts.findIndex(x => x.author === rec.author && x.permlink === rec.permlink);
     if (i >= 0) allPosts[i] = { ...allPosts[i], ...rec }; else allPosts.push(rec);
   });
 
   profileHeader.innerHTML = `
     <h2>@${username}</h2>
-    <p class="sub">${resolved.length} pinned favorite${resolved.length === 1 ? "" : "s"}</p>
+    <p class="sub">${resolvedPortfolio.length}/${PORTFOLIO_MAX} portfolio picks · ${resolvedPins.length} pinned favorite${resolvedPins.length === 1 ? "" : "s"}</p>
     <button class="chip" onclick="location.hash=''">← Back to feed</button>
   `;
 
-  grid.innerHTML = resolved.length
-    ? resolved.map(cardTemplate).join("")
-    : `<div class="empty">No pins yet.</div>`;
+  grid.innerHTML = `
+    <div class="profile-section">
+      <h3>🎨 Portfolio ${username === currentUser ? `<span class="sub">— pick up to ${PORTFOLIO_MAX} of your own posts, from the 🎨 button on any of your cards</span>` : ""}</h3>
+      <div class="grid">
+        ${resolvedPortfolio.length ? resolvedPortfolio.map(cardTemplate).join("") : `<div class="empty">No portfolio picks yet.</div>`}
+      </div>
+    </div>
+    <div class="profile-section">
+      <h3>📌 Pinned Favorites</h3>
+      <div class="grid">
+        ${resolvedPins.length ? resolvedPins.map(cardTemplate).join("") : `<div class="empty">No pins yet.</div>`}
+      </div>
+    </div>
+  `;
 
   status.textContent = "";
 }
@@ -1648,43 +1974,8 @@ async function postWip() {
     return;
   }
 
-  const crosspostNote = `${fullBody}\n\n(WIP shared via Hive Art Discovery)`;
-
-  if (shareSnap) {
-    const container = await getLatestContainerPost(SNAPS_ACCOUNT);
-    if (container) {
-      const snapResult = await broadcastComment({
-        author: currentUser,
-        permlink: ("wip-snap-" + Date.now()).toLowerCase(),
-        title: "",
-        body: crosspostNote,
-        parentAuthor: container.author,
-        parentPermlink: container.permlink,
-        jsonMetadata: JSON.stringify({ tags: [SNAPS_ACCOUNT], app: "hive-art-discovery/0.1" })
-      });
-      if (!snapResult.success) alert("WIP posted, but cross-posting as a Snap failed: " + snapResult.message);
-    } else {
-      alert("WIP posted, but couldn't find the current Snaps container to cross-post into.");
-    }
-  }
-
-  if (shareWave) {
-    const container = await getLatestContainerPost(WAVES_ACCOUNT);
-    if (container) {
-      const waveResult = await broadcastComment({
-        author: currentUser,
-        permlink: ("wip-wave-" + Date.now()).toLowerCase(),
-        title: "",
-        body: crosspostNote,
-        parentAuthor: container.author,
-        parentPermlink: container.permlink,
-        jsonMetadata: JSON.stringify({ tags: [WAVES_ACCOUNT], app: "hive-art-discovery/0.1" })
-      });
-      if (!waveResult.success) alert("WIP posted, but cross-posting as a Wave failed: " + waveResult.message);
-    } else {
-      alert("WIP posted, but couldn't find the current Waves container to cross-post into.");
-    }
-  }
+  const failures = await crosspostToSnapWave(fullBody, shareSnap, shareWave, "wip", "WIP shared via Hive Art Discovery");
+  if (failures.length) alert("WIP posted, but " + failures.join(" Also, "));
 
   document.getElementById("wipBody").value = "";
   document.getElementById("wipImage").value = "";
@@ -1735,17 +2026,271 @@ async function renderWipView() {
   status.textContent = "";
 }
 
+// ---- Submit Art: a full finished-art post, written in the same Markdown as the rest of
+// Hive, with a structured "how was it created" section that auto-generates tags rather
+// than asking the artist to hand-type them. See "Submitting Artwork" in the vault for
+// the full mapping and reasoning. ----
+
+// A short, URL-safe slug from the title, so the permlink reads as something more than
+// a bare timestamp — still suffixed with the timestamp underneath to guarantee it's unique.
+function slugify(title) {
+  return (title || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .slice(0, 40)
+    .replace(/^-+|-+$/g, "");
+}
+
+// Shows/hides the right conditional sub-field(s) for whichever "how was it created"
+// option is currently selected. All the conditional blocks live in the DOM the whole
+// time — this just toggles which ones are visible, no re-rendering.
+function updateCreationFields() {
+  const method = document.getElementById("creationMethod").value;
+  document.querySelectorAll("#submitForm .conditional-field").forEach(el => {
+    el.classList.toggle("shown", el.dataset.method === method);
+  });
+  updateTraditionalOtherField();
+}
+
+function updateTraditionalOtherField() {
+  const medium = document.getElementById("traditionalMedium");
+  const otherField = document.getElementById("traditionalOtherField");
+  if (medium && otherField) {
+    otherField.classList.toggle("shown", medium.value === "other");
+  }
+}
+
+// Maps the submit form's "how was it created" selections to actual Hive tags. Kept as
+// its own function so the mapping is easy to find and adjust in one place.
+function buildCreationTags() {
+  const method = document.getElementById("creationMethod").value;
+  const tags = [];
+  if (method === "traditional") {
+    tags.push("traditionalart");
+    const medium = document.getElementById("traditionalMedium").value;
+    const mediumTagMap = {
+      ink: "ink", pencil: "pencil", acrylic: "acrylic", oil: "oilpainting",
+      watercolor: "watercolor", pencilcrayons: "pencilcrayons", pastels: "pastels"
+    };
+    if (medium === "other") {
+      const custom = document.getElementById("traditionalOther").value.trim();
+      if (custom) tags.push(normalizeTag(custom));
+    } else if (mediumTagMap[medium]) {
+      tags.push(mediumTagMap[medium]);
+    }
+  } else if (method === "digital") {
+    tags.push("digitalart");
+    const program = document.getElementById("digitalProgram").value.trim();
+    if (program) tags.push(normalizeTag(program));
+  } else if (method === "photography") {
+    tags.push("photography");
+    const shotTagMap = { macro: "macrophotography", micro: "microphotography", landscape: "landscapephotography" };
+    const shot = document.getElementById("photoShotType").value;
+    if (shotTagMap[shot]) tags.push(shotTagMap[shot]);
+  } else if (method === "fiber") {
+    tags.push("fiberart");
+    ["knitting", "crochet", "crossstitch", "embroidery"].forEach(id => {
+      const box = document.getElementById("fiber-" + id);
+      if (box && box.checked) tags.push(id);
+    });
+  } else if (method === "sculpting") {
+    tags.push("sculpture");
+    const material = document.getElementById("sculptMaterial").value.trim();
+    if (material) tags.push(normalizeTag(material));
+  } else if (method === "ai") {
+    tags.push("aiart");
+    const engine = document.getElementById("aiEngine").value.trim();
+    if (engine) tags.push(normalizeTag(engine));
+  }
+  return tags;
+}
+
+async function submitArtwork() {
+  if (!currentUser) { login(); return; }
+  const title = document.getElementById("submitTitle").value.trim();
+  const body = document.getElementById("submitBody").value.trim();
+  if (!title || !body) { alert("Add a title and some body text first."); return; }
+  const method = document.getElementById("creationMethod").value;
+  if (!method) { alert('Pick an option for "How was it created" — that\'s what generates the tags.'); return; }
+
+  const imageUrl = document.getElementById("submitImage").value.trim();
+  const isNSFW = document.getElementById("submitNsfw").checked;
+  const shareSnap = document.getElementById("submitSnap").checked;
+  const shareWave = document.getElementById("submitWave").checked;
+
+  const fullBody = imageUrl && !body.includes(imageUrl) ? `${body}\n\n![art](${imageUrl})` : body;
+
+  // "art" always comes first so every submission clears the site's own Layer-1
+  // inclusion check regardless of which creation-method tags apply — see
+  // "Submitting Artwork" in the vault. Capped well under Hive's practical tag limit.
+  const creationTags = buildCreationTags();
+  const tags = [...new Set(["art", ...creationTags, ...(isNSFW ? ["nsfw"] : [])])].slice(0, 8);
+
+  const permlink = (slugify(title) || "art") + "-" + Date.now();
+  const jsonMetadata = JSON.stringify({
+    tags, app: "hive-art-discovery/0.1", format: "markdown",
+    ...(imageUrl ? { image: [imageUrl] } : {})
+  });
+
+  const result = await broadcastComment({
+    author: currentUser, permlink, title, body: fullBody,
+    parentAuthor: "", parentPermlink: tags[0], jsonMetadata
+  });
+
+  if (!result.success) {
+    alert("Failed to submit artwork: " + result.message);
+    return;
+  }
+
+  const failures = await crosspostToSnapWave(fullBody, shareSnap, shareWave, "art", "New art posted via Hive Art Discovery");
+  if (failures.length) alert("Artwork posted, but " + failures.join(" Also, "));
+
+  // Show it immediately without waiting on the next sweep — same pattern as WIP/search.
+  const rec = buildPostRecord({
+    author: currentUser, permlink, title, body: fullBody,
+    created: new Date().toISOString(), parent_author: "", parent_permlink: tags[0],
+    json_metadata: jsonMetadata, category: tags[0]
+  }, "Submitted");
+  const i = allPosts.findIndex(x => x.author === rec.author && x.permlink === rec.permlink);
+  if (i >= 0) allPosts[i] = rec; else allPosts.unshift(rec);
+  buildFilterChips();
+
+  alert(`Posted! Tags: ${tags.join(", ")}`);
+  location.hash = "";
+  route();
+}
+
+async function renderSubmitView() {
+  document.querySelector(".filters").style.display = "none";
+  document.getElementById("genreSuggestionsBar").style.display = "none";
+  document.getElementById("profileHeader").style.display = "none";
+  document.getElementById("wipHeader").style.display = "none";
+  const status = document.getElementById("status");
+  const submitHeader = document.getElementById("submitHeader");
+  const grid = document.getElementById("grid");
+  submitHeader.style.display = "block";
+  grid.innerHTML = "";
+  status.textContent = "";
+
+  submitHeader.innerHTML = `
+    <h2>📮 Submit Art</h2>
+    <p class="sub">Post directly to Hive using regular Markdown. Pick how the piece was made below and the right tags get added automatically.</p>
+    <button class="chip" onclick="location.hash=''">← Back to feed</button>
+    ${currentUser ? `
+      <div id="submitForm">
+        <div class="field">
+          <label class="field-label">Title</label>
+          <input type="text" id="submitTitle" placeholder="Title of the piece" maxlength="120">
+        </div>
+        <div class="field">
+          <label class="field-label">Body (Markdown)</label>
+          <textarea id="submitBody" placeholder="Write about the piece — Markdown works the same as anywhere else on Hive."></textarea>
+        </div>
+        <div class="field">
+          <label class="field-label">Image URL (optional)</label>
+          <input type="text" id="submitImage" placeholder="Cover image URL — embedded and used as the thumbnail">
+        </div>
+
+        <div class="field">
+          <label class="field-label">How was it created?</label>
+          <select id="creationMethod" onchange="updateCreationFields()">
+            <option value="">Select…</option>
+            <option value="traditional">Traditional</option>
+            <option value="digital">Digital</option>
+            <option value="photography">Photography</option>
+            <option value="fiber">Fabric &amp; Fibre Arts</option>
+            <option value="sculpting">Sculpting</option>
+            <option value="ai">AI</option>
+          </select>
+        </div>
+
+        <div class="field conditional-field" data-method="traditional">
+          <label class="field-label">Medium</label>
+          <select id="traditionalMedium" onchange="updateTraditionalOtherField()">
+            <option value="ink">Ink</option>
+            <option value="pencil">Pencil</option>
+            <option value="acrylic">Acrylic paint</option>
+            <option value="oil">Oil paint</option>
+            <option value="watercolor">Watercolour paint</option>
+            <option value="pencilcrayons">Pencil crayons</option>
+            <option value="pastels">Pastels</option>
+            <option value="other">Other</option>
+          </select>
+          <div class="field conditional-field" id="traditionalOtherField" style="margin-top:8px;">
+            <label class="field-label">Describe the medium</label>
+            <input type="text" id="traditionalOther" placeholder="e.g. charcoal, gouache" maxlength="24">
+          </div>
+        </div>
+
+        <div class="field conditional-field" data-method="digital">
+          <label class="field-label">What program did you use?</label>
+          <input type="text" id="digitalProgram" placeholder="e.g. Procreate, Photoshop" maxlength="24">
+        </div>
+
+        <div class="field conditional-field" data-method="photography">
+          <label class="field-label">Type of shot</label>
+          <select id="photoShotType">
+            <option value="macro">Macro</option>
+            <option value="micro">Micro</option>
+            <option value="landscape">Landscape</option>
+          </select>
+        </div>
+
+        <div class="field conditional-field" data-method="fiber">
+          <label class="field-label">Technique (pick any that apply)</label>
+          <div class="checkbox-group">
+            <label><input type="checkbox" id="fiber-knitting"> Knitting</label>
+            <label><input type="checkbox" id="fiber-crochet"> Crochet</label>
+            <label><input type="checkbox" id="fiber-crossstitch"> Cross stitch</label>
+            <label><input type="checkbox" id="fiber-embroidery"> Embroidery</label>
+          </div>
+        </div>
+
+        <div class="field conditional-field" data-method="sculpting">
+          <label class="field-label">What material did you use?</label>
+          <input type="text" id="sculptMaterial" placeholder="e.g. clay, resin, wood" maxlength="24">
+        </div>
+
+        <div class="field conditional-field" data-method="ai">
+          <label class="field-label">Which AI engine/tool did you use?</label>
+          <input type="text" id="aiEngine" placeholder="e.g. Midjourney, Stable Diffusion" maxlength="24">
+        </div>
+
+        <div class="wip-crosspost">
+          <label><input type="checkbox" id="submitNsfw"> Mark as NSFW</label>
+          <label><input type="checkbox" id="submitSnap"> Also share as a Hive Snap</label>
+          <label><input type="checkbox" id="submitWave"> Also share as an Ecency Wave</label>
+          <a href="https://inleo.io" target="_blank" rel="noopener" class="profile-link">Share on InLeo manually →</a>
+        </div>
+
+        <button class="chip" onclick="submitArtwork()">Post artwork</button>
+      </div>
+    ` : `<p class="sub">Log in to submit artwork.</p>`}
+  `;
+}
+
 function route() {
   const hash = location.hash;
   document.getElementById("statsPanel").style.display = "none";
+  // Every view is responsible for showing its own header further down — reset all
+  // three to hidden here first so switching views never leaves a stale one visible.
+  document.getElementById("profileHeader").style.display = "none";
+  document.getElementById("wipHeader").style.display = "none";
+  document.getElementById("submitHeader").style.display = "none";
+
   if (hash.startsWith("#profile/")) {
-    document.getElementById("wipHeader").style.display = "none";
+    document.getElementById("grid").style.display = "block"; // profile page nests its own sub-grids per section
     renderProfileView(decodeURIComponent(hash.slice("#profile/".length)));
   } else if (hash === "#wip") {
+    document.getElementById("grid").style.display = "";
     renderWipView();
+  } else if (hash === "#submit") {
+    document.getElementById("grid").style.display = "";
+    renderSubmitView();
   } else {
-    document.getElementById("profileHeader").style.display = "none";
-    document.getElementById("wipHeader").style.display = "none";
+    document.getElementById("grid").style.display = "";
     document.querySelector(".filters").style.display = "";
     document.getElementById("genreSuggestionsBar").style.display = "";
     render();
@@ -1770,6 +2315,12 @@ document.getElementById("followingToggle").addEventListener("change", () => { sa
 document.getElementById("refreshBtn").addEventListener("click", () => {
   document.getElementById("refreshBtn").disabled = true;
   loadAll(true).finally(() => { document.getElementById("refreshBtn").disabled = false; }); // true = bypass cache, always live
+});
+
+document.getElementById("searchBtn").addEventListener("click", runSearch);
+document.getElementById("searchClearBtn").addEventListener("click", clearSearch);
+document.getElementById("searchInput").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") runSearch();
 });
 
 document.getElementById("suggestGenreBtn").addEventListener("click", suggestGenre);
